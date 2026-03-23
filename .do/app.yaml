@@ -1,0 +1,33 @@
+name: scene-sense
+services:
+  - name: web
+    github:
+      repo: your-username/scene-sense
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: Dockerfile
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: professional-xs
+    envs:
+      - key: DIGITAL_OCEAN_MODEL_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: LINKEDIN_CLIENT_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: LINKEDIN_CLIENT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: LINKEDIN_ACCESS_TOKEN
+        scope: RUN_TIME
+        type: SECRET
+      - key: LINKEDIN_REFRESH_TOKEN
+        scope: RUN_TIME
+        type: SECRET
+      - key: NEXT_PUBLIC_LINKEDIN_PROFILE_URL
+        scope: RUN_AND_BUILD_TIME
+        value: "https://www.linkedin.com/in/aprildag"
