@@ -37,7 +37,7 @@ export default function Home() {
 
   // Pipeline state
   const [generating, setGenerating] = useState(false);
-  const [activeStep, setActiveStep] = useState<string | null>(null);
+  const [activeSteps, setActiveSteps] = useState<Set<string>>(new Set());
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +63,7 @@ export default function Home() {
     if (!media || !goal) return;
 
     setGenerating(true);
-    setActiveStep(null);
+    setActiveSteps(new Set());
     setCompletedSteps(new Set());
     setResult(null);
     setError(null);
@@ -106,8 +106,13 @@ export default function Home() {
 
             if (eventType === "step") {
               if (data.status === "started") {
-                setActiveStep(data.step);
+                setActiveSteps((prev) => new Set([...prev, data.step]));
               } else if (data.status === "completed") {
+                setActiveSteps((prev) => {
+                  const next = new Set(prev);
+                  next.delete(data.step);
+                  return next;
+                });
                 setCompletedSteps((prev) => new Set([...prev, data.step]));
               }
             } else if (eventType === "complete") {
@@ -122,7 +127,7 @@ export default function Home() {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setGenerating(false);
-      setActiveStep(null);
+      setActiveSteps(new Set());
     }
   };
 
@@ -131,7 +136,7 @@ export default function Home() {
     label: STEP_LABELS[key],
     status: completedSteps.has(key)
       ? ("completed" as const)
-      : activeStep === key
+      : activeSteps.has(key)
       ? ("active" as const)
       : ("pending" as const),
   }));

@@ -9,7 +9,7 @@ const execFileAsync = promisify(execFile);
  */
 export async function framesToPromoVideo(
   framePaths: string[],
-  audioPath: string,
+  audioPath: string | null,
   outputPath: string
 ): Promise<void> {
   const frameDuration = 4; // seconds per frame
@@ -51,23 +51,28 @@ export async function framesToPromoVideo(
     }
   }
 
-  // Add audio input
-  inputs.push("-i", audioPath);
+  // Add audio input if available
+  if (audioPath) {
+    inputs.push("-i", audioPath);
+  }
 
   const filterComplex = filterParts.join("; ");
+
+  const outputArgs = [
+    "-map", "[outv]",
+    ...(audioPath
+      ? ["-map", `${framePaths.length}:a`, "-c:a", "aac", "-b:a", "192k", "-shortest"]
+      : []),
+    "-c:v", "libx264",
+    "-preset", "ultrafast",
+    "-movflags", "+faststart",
+  ];
 
   await execFileAsync("ffmpeg", [
     "-y",
     ...inputs,
     "-filter_complex", filterComplex,
-    "-map", "[outv]",
-    "-map", `${framePaths.length}:a`,
-    "-c:v", "libx264",
-    "-preset", "ultrafast",
-    "-c:a", "aac",
-    "-b:a", "192k",
-    "-shortest",
-    "-movflags", "+faststart",
+    ...outputArgs,
     outputPath,
   ], { timeout: 120_000 });
 }

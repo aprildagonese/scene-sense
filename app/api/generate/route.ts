@@ -2,8 +2,8 @@ import { randomUUID } from "crypto";
 import { mkdir, writeFile, readFile } from "fs/promises";
 import path from "path";
 import { NextRequest } from "next/server";
-import { analyzeImage, generateCopyAndMusicPrompt, generateMusic, generatePromoFrames } from "@/lib/gradient";
-import { framesToPromoVideo, extractFrame } from "@/lib/ffmpeg";
+import { analyzeImage, generateCopyAndMusicPrompt, generateMusic, generateVideoFromImage, generatePromoFrames } from "@/lib/gradient";
+import { framesToPromoVideo, videoWithNewAudio, extractFrame } from "@/lib/ffmpeg";
 import { query } from "@/lib/db";
 
 export const maxDuration = 120;
@@ -47,14 +47,15 @@ export async function POST(req: NextRequest) {
         // --- Step 1: Vision analysis ---
         send("step", { step: "vision", status: "started", label: "Analyzing your scene..." });
 
-        let imageBase64: string;
+        let imageBuffer: Buffer;
         if (mediaType === "video") {
           const framePath = path.join(workDir, "frame.jpg");
           await extractFrame(inputPath, framePath);
-          imageBase64 = (await readFile(framePath)).toString("base64");
+          imageBuffer = await readFile(framePath);
         } else {
-          imageBase64 = buffer.toString("base64");
+          imageBuffer = buffer;
         }
+        const imageBase64 = imageBuffer.toString("base64");
 
         const description = await analyzeImage(imageBase64);
         send("step", { step: "vision", status: "completed", description });
@@ -70,37 +71,73 @@ export async function POST(req: NextRequest) {
         });
         send("step", { step: "copy", status: "completed", copy, musicPrompt });
 
-        // --- Step 3 & 4: Music + promo frames in parallel ---
+        // --- Step 3: Music + Video generation in parallel ---
         send("step", { step: "audio", status: "started", label: "Generating music..." });
         send("step", { step: "frames", status: "started", label: "Creating promo visuals..." });
 
-        const [musicBuffer, promoFrames] = await Promise.all([
-          generateMusic(musicPrompt),
-          generatePromoFrames({ description, vibe, goal }),
-        ]);
+        // Run music and video in parallel, reporting progress independently
+        let useGpuVideo = true;
+        let musicBuffer: Buffer | null = null;
+        let videoOrFrames: Buffer | Buffer[] | null = null;
+        const audioPath = path.join(workDir, "music.wav");
 
-        // Save music
-        const audioPath = path.join(workDir, "music.mp3");
-        await writeFile(audioPath, musicBuffer);
-        send("step", { step: "audio", status: "completed" });
+        const musicPromise = generateMusic(musicPrompt).then(async (buf) => {
+          musicBuffer = buf;
+          await writeFile(audioPath, buf);
+          send("step", { step: "audio", status: "completed" });
+        }).catch((err) => {
+          console.warn("Music generation failed, video will have no audio:", err.message);
+          send("step", { step: "audio", status: "completed" });
+        });
 
-        // Save promo frames
-        const framePaths: string[] = [];
-        for (let i = 0; i < promoFrames.length; i++) {
-          const fp = path.join(workDir, `promo-frame-${i}.png`);
-          await writeFile(fp, promoFrames[i]);
-          framePaths.push(fp);
-        }
-        send("step", { step: "frames", status: "completed" });
+        const videoPromise = generateVideoFromImage(imageBuffer)
+          .catch((err) => {
+            console.warn("GPU video generation failed, falling back to image frames:", err.message);
+            useGpuVideo = false;
+            return generatePromoFrames({ description, vibe, goal });
+          })
+          .then((result) => {
+            videoOrFrames = result;
+            send("step", { step: "frames", status: "completed" });
+          });
 
-        // --- Step 5: Video composition ---
+        await Promise.all([musicPromise, videoPromise]);
+
+        // --- Step 4: Video composition ---
         send("step", { step: "video", status: "started", label: "Compositing video..." });
 
         const outputPath = path.join(workDir, "output.mp4");
-        await framesToPromoVideo(framePaths, audioPath, outputPath);
+
+        const hasAudio = musicBuffer !== null;
+
+        if (useGpuVideo) {
+          const gpuVideoPath = path.join(workDir, "gpu-video.mp4");
+          await writeFile(gpuVideoPath, videoOrFrames as Buffer);
+          if (hasAudio) {
+            await videoWithNewAudio(gpuVideoPath, audioPath, outputPath);
+          } else {
+            // No audio — just copy the GPU video as-is
+            await writeFile(outputPath, videoOrFrames as Buffer);
+          }
+        } else {
+          const frames = videoOrFrames as Buffer[];
+          const framePaths: string[] = [];
+          for (let i = 0; i < frames.length; i++) {
+            const fp = path.join(workDir, `promo-frame-${i}.png`);
+            await writeFile(fp, frames[i]);
+            framePaths.push(fp);
+          }
+          if (hasAudio) {
+            await framesToPromoVideo(framePaths, audioPath, outputPath);
+          } else {
+            // No audio — create silent video from frames
+            await framesToPromoVideo(framePaths, null, outputPath);
+          }
+        }
+
         send("step", { step: "video", status: "completed" });
 
-        // --- Step 6: Save to DB ---
+        // --- Step 5: Save to DB ---
         const result = await query(
           `INSERT INTO posts (platform, goal, vibe, description, copy, narration, video_url, media_url)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

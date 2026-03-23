@@ -123,8 +123,8 @@ async function asyncInvoke(modelId: string, input: Record<string, unknown>): Pro
 
   const { request_id } = (await submitRes.json()) as { request_id: string };
 
-  // Step 2: Poll until completed (1s interval, 90s timeout)
-  const deadline = Date.now() + 90_000;
+  // Step 2: Poll until completed (2s interval, 180s timeout)
+  const deadline = Date.now() + 180_000;
   let completed = false;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 1000));
@@ -139,7 +139,7 @@ async function asyncInvoke(modelId: string, input: Record<string, unknown>): Pro
   }
 
   if (!completed) {
-    throw new Error(`Async job timed out (${modelId}) after 90s — request_id: ${request_id}`);
+    throw new Error(`Async job timed out (${modelId}) after 180s — request_id: ${request_id}`);
   }
 
   // Step 3: Retrieve result
@@ -154,8 +154,8 @@ async function asyncInvoke(modelId: string, input: Record<string, unknown>): Pro
 export async function generateMusic(musicPrompt: string): Promise<Buffer> {
   const result = await asyncInvoke("fal-ai/stable-audio-25/text-to-audio", {
     prompt: musicPrompt,
-    seconds_total: 12,
-    steps: 100,
+    seconds_total: 10,
+    steps: 50,
   });
 
   // Extract audio URL from result — structure is output.audio.url
@@ -207,4 +207,28 @@ export async function generatePromoFrames(params: {
   });
 
   return Promise.all(framePromises);
+}
+
+// --- Video: Generate video from image via GPU Droplet (SVD) ---
+
+const GPU_SERVER_URL = process.env.GPU_SERVER_URL ?? "http://159.203.31.93:8000";
+
+export async function generateVideoFromImage(imageBuffer: Buffer): Promise<Buffer> {
+  const formData = new FormData();
+  formData.append("image", new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" }), "input.jpg");
+  formData.append("num_frames", "25");
+  formData.append("fps", "7");
+  formData.append("motion_bucket_id", "127");
+  formData.append("noise_aug_strength", "0.02");
+
+  const res = await fetch(`${GPU_SERVER_URL}/generate`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    throw new Error(`GPU video generation failed: ${res.status} ${await res.text()}`);
+  }
+
+  return Buffer.from(await res.arrayBuffer());
 }
