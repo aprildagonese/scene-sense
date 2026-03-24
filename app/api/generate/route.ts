@@ -83,13 +83,13 @@ export async function POST(req: NextRequest) {
         let fluxFrameBuffers: Buffer[] = [];
         const audioPath = path.join(workDir, "music.wav");
 
-        const musicPromise = generateMusic(musicPrompt).then(async (buf) => {
+        const musicPromise = generateMusic(musicPrompt, 2).then(async (buf) => {
           musicBuffer = buf;
           await writeFile(audioPath, buf);
           send("step", { step: "audio", status: "completed" });
         }).catch((err) => {
-          console.warn("Music generation failed:", err.message);
-          send("step", { step: "audio", status: "completed" });
+          console.warn("Music generation failed after retries:", err.message);
+          send("step", { step: "audio", status: "completed", warning: "Music unavailable — video will be silent" });
         });
 
         const svdPromise = generateVideoFromImage(imageBuffer).then((buf) => {

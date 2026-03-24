@@ -15,6 +15,7 @@ interface GenerateResult {
   musicPrompt: string;
   videoUrl: string;
   audioUrl: string;
+  posted?: boolean;
 }
 
 const STEP_LABELS: Record<string, string> = {
@@ -31,6 +32,7 @@ export default function Home() {
   // Media state
   const [media, setMedia] = useState<Blob | null>(null);
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
+  const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form state
@@ -53,6 +55,7 @@ export default function Home() {
   const handleCapture = useCallback((blob: Blob, type: "image" | "video") => {
     setMedia(blob);
     setMediaType(type);
+    setMediaPreviewUrl(null); // webcam shows its own preview
   }, []);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,6 +64,9 @@ export default function Home() {
     const type = file.type.startsWith("video/") ? "video" : "image";
     setMedia(file);
     setMediaType(type);
+    // Create a preview URL for the uploaded file
+    if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+    setMediaPreviewUrl(URL.createObjectURL(file));
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,6 +78,7 @@ export default function Home() {
       musicPrompt: post.narration ?? "",
       videoUrl: post.video_url ?? "",
       audioUrl: post.audio_url ?? "",
+      posted: post.posted ?? false,
     });
     setSelectedPostId(post.id);
     setError(null);
@@ -196,7 +203,32 @@ export default function Home() {
       <div className="space-y-5">
         <h2 className="text-xl font-semibold">Capture</h2>
 
-        <WebcamCapture onCapture={handleCapture} />
+        {/* Show either uploaded file preview OR webcam — not both */}
+        {mediaPreviewUrl ? (
+          <div className="relative rounded-lg overflow-hidden border border-gray-700">
+            {mediaType === "video" ? (
+              <video src={mediaPreviewUrl} className="w-full rounded-lg" controls muted />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={mediaPreviewUrl} alt="Uploaded file" className="w-full rounded-lg" />
+            )}
+            <button
+              onClick={() => {
+                setMedia(null);
+                setMediaPreviewUrl(null);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }}
+              className="absolute top-2 right-2 bg-black/60 hover:bg-black/80 rounded-full p-1 transition-colors"
+              title="Remove and use camera instead"
+            >
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <WebcamCapture onCapture={handleCapture} />
+        )}
 
         {/* File upload alternative */}
         <div className="text-center">
@@ -212,7 +244,7 @@ export default function Home() {
             onClick={() => fileInputRef.current?.click()}
             className="block w-full mt-1 py-2 text-sm text-gray-400 hover:text-gray-300 transition-colors"
           >
-            Upload a file
+            {mediaPreviewUrl ? "Upload a different file" : "Upload a file"}
           </button>
         </div>
 
@@ -297,7 +329,7 @@ export default function Home() {
                 </svg>
               </button>
             </div>
-            <OutputPanel result={result} />
+            <OutputPanel key={result.id} result={result} />
           </>
         )}
 

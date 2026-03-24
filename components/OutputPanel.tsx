@@ -9,6 +9,7 @@ interface GenerateResult {
   musicPrompt: string;
   videoUrl: string;
   audioUrl: string;
+  posted?: boolean;
 }
 
 interface OutputPanelProps {
@@ -19,7 +20,7 @@ export default function OutputPanel({ result }: OutputPanelProps) {
   const [copy, setCopy] = useState(result.copy);
   const [copied, setCopied] = useState(false);
   const [posting, setPosting] = useState(false);
-  const [posted, setPosted] = useState(false);
+  const [posted, setPosted] = useState(result.posted ?? false);
   const [postError, setPostError] = useState<string | null>(null);
   const [showDescription, setShowDescription] = useState(false);
   const [confirmPost, setConfirmPost] = useState<{ testMode: boolean } | null>(null);
