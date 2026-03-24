@@ -1,14 +1,14 @@
 #!/bin/bash
-# Setup script for Scene Sense GPU video generation server
+# Setup script for Scene Sense MusicGen server
 # Run this on the GPU Droplet after SSH-ing in
 
 set -e
 
-echo "=== Scene Sense GPU Server Setup ==="
+echo "=== Scene Sense MusicGen Server Setup ==="
 
 # Update system
 apt-get update -y
-apt-get install -y python3-pip python3-venv ffmpeg
+apt-get install -y python3-pip python3-venv
 
 # Create virtual environment
 python3 -m venv /opt/scene-sense-venv
@@ -18,17 +18,13 @@ source /opt/scene-sense-venv/bin/activate
 pip install --upgrade pip
 pip install -r /opt/scene-sense/requirements.txt
 
-# Pre-download the model (takes a few minutes)
-echo "Downloading Stable Video Diffusion model..."
+# Pre-download the model
+echo "Downloading MusicGen model..."
 python3 -c "
-from diffusers import StableVideoDiffusionPipeline
-import torch
-pipe = StableVideoDiffusionPipeline.from_pretrained(
-    'stabilityai/stable-video-diffusion-img2vid-xt',
-    torch_dtype=torch.float16,
-    variant='fp16',
-)
-print('Model downloaded successfully!')
+from transformers import AutoProcessor, MusicgenForConditionalGeneration
+processor = AutoProcessor.from_pretrained('facebook/musicgen-medium')
+model = MusicgenForConditionalGeneration.from_pretrained('facebook/musicgen-medium')
+print('MusicGen model downloaded successfully!')
 "
 
 echo "=== Setup complete! ==="

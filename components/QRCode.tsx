@@ -11,7 +11,7 @@ interface QRCodeProps {
 }
 
 export default function QRCode({
-  url = process.env.NEXT_PUBLIC_LINKEDIN_PROFILE_URL ?? "https://www.linkedin.com/in/aprildagonese/",
+  url = "https://www.linkedin.com/in/aprildagonese/",
   size = 160,
   darkOnLight = false,
   label = "Connect with me on LinkedIn",

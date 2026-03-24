@@ -1,6 +1,6 @@
 import { Pool } from "pg";
 
-const connectionString = process.env.DATABASE_URL?.replace(/\?sslmode=require$/, "") ?? "";
+const connectionString = (process.env.DIGITAL_OCEAN_DATABASE_URL ?? process.env.DATABASE_URL)?.replace(/\?sslmode=require$/, "") ?? "";
 const isLocal = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
 
 const pool = new Pool({

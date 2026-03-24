@@ -101,8 +101,8 @@ export default function OutputPanel({ result }: OutputPanelProps) {
         <textarea
           value={copy}
           onChange={(e) => setCopy(e.target.value)}
-          rows={5}
-          className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-blue-500"
+          rows={6}
+          className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm resize-y focus:outline-none focus:border-blue-500"
         />
       </div>
 

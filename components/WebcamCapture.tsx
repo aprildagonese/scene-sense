@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 
 interface WebcamCaptureProps {
-  onCapture: (blob: Blob, mediaType: "image" | "video") => void;
+  onCapture: (blob: Blob, mediaType?: "image" | "video") => void;
 }
 
 export default function WebcamCapture({ onCapture }: WebcamCaptureProps) {

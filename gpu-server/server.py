@@ -1,89 +1,91 @@
 """
-Scene Sense — Image-to-Video GPU Server
-Runs Stable Video Diffusion (SVD) on a DigitalOcean GPU Droplet.
-Accepts an image, returns a short animated video.
+MusicGen server for Scene Sense — runs on DigitalOcean GPU Droplet.
+Generates promo-style background music from text prompts using
+Meta's MusicGen (open-weight, MIT license).
 """
 
 import io
-import os
-import tempfile
 import torch
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import StreamingResponse
-from PIL import Image
-from diffusers import StableVideoDiffusionPipeline
-from diffusers.utils import export_to_video
+import scipy.io.wavfile
+from fastapi import FastAPI
+from fastapi.responses import Response
+from pydantic import BaseModel
 
 app = FastAPI()
 
-# Load model at startup
-print("Loading Stable Video Diffusion pipeline...")
-pipe = StableVideoDiffusionPipeline.from_pretrained(
-    "stabilityai/stable-video-diffusion-img2vid-xt",
-    torch_dtype=torch.float16,
-    variant="fp16",
-)
-pipe.to("cuda")
-# Enable memory optimizations for 20GB VRAM
-pipe.enable_model_cpu_offload()
-print("Model loaded and ready!")
+# Global model reference
+model = None
+processor = None
+
+
+@app.on_event("startup")
+def load_model():
+    global model, processor
+    from transformers import AutoProcessor, MusicgenForConditionalGeneration
+
+    print("Loading MusicGen model...")
+    model_id = "facebook/musicgen-medium"
+    processor = AutoProcessor.from_pretrained(model_id)
+    model = MusicgenForConditionalGeneration.from_pretrained(model_id)
+
+    if torch.cuda.is_available():
+        model = model.to("cuda")
+        print(f"MusicGen loaded on GPU: {torch.cuda.get_device_name(0)}")
+    else:
+        print("WARNING: CUDA not available, running on CPU (will be slow)")
+
+    print("MusicGen ready!")
+
+
+class MusicRequest(BaseModel):
+    prompt: str
+    duration_seconds: float = 12.0
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": "stable-video-diffusion-img2vid-xt"}
+    return {
+        "status": "ok",
+        "model": "facebook/musicgen-medium",
+        "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+    }
 
 
 @app.post("/generate")
-async def generate_video(
-    image: UploadFile = File(...),
-    num_frames: int = Form(25),
-    fps: int = Form(7),
-    motion_bucket_id: int = Form(127),
-    noise_aug_strength: float = Form(0.02),
-):
-    """
-    Generate a video from an input image using SVD.
+def generate_music(req: MusicRequest):
+    """Generate music from a text prompt. Returns a WAV file."""
+    # MusicGen generates at 32kHz
+    sample_rate = 32000
+    max_new_tokens = int(req.duration_seconds * 50)  # ~50 tokens per second
 
-    - image: Input image file (JPEG/PNG)
-    - num_frames: Number of frames to generate (default 25)
-    - fps: Frames per second for output (default 7)
-    - motion_bucket_id: Controls amount of motion (1-255, higher = more motion)
-    - noise_aug_strength: Noise augmentation (lower = closer to input)
-    """
-    # Read and prepare input image
-    image_bytes = await image.read()
-    input_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    inputs = processor(
+        text=[req.prompt],
+        padding=True,
+        return_tensors="pt",
+    )
 
-    # SVD expects 1024x576
-    input_image = input_image.resize((1024, 576))
+    if torch.cuda.is_available():
+        inputs = {k: v.to("cuda") for k, v in inputs.items()}
 
-    # Generate video frames
     with torch.no_grad():
-        frames = pipe(
-            input_image,
-            num_frames=num_frames,
-            decode_chunk_size=4,
-            motion_bucket_id=motion_bucket_id,
-            noise_aug_strength=noise_aug_strength,
-        ).frames[0]
+        audio_values = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=True,
+            guidance_scale=3.0,
+        )
 
-    # Export to video file
-    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
-        tmp_path = tmp.name
+    # Convert to numpy and write WAV
+    audio = audio_values[0, 0].cpu().numpy()
 
-    export_to_video(frames, tmp_path, fps=fps)
+    buf = io.BytesIO()
+    scipy.io.wavfile.write(buf, sample_rate, audio)
+    buf.seek(0)
 
-    # Stream the video back
-    def iterfile():
-        with open(tmp_path, "rb") as f:
-            yield from f
-        os.unlink(tmp_path)
-
-    return StreamingResponse(
-        iterfile(),
-        media_type="video/mp4",
-        headers={"Content-Disposition": "attachment; filename=generated.mp4"},
+    return Response(
+        content=buf.read(),
+        media_type="audio/wav",
+        headers={"Content-Disposition": "attachment; filename=music.wav"},
     )
 
 

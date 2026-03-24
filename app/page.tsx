@@ -22,17 +22,14 @@ const STEP_LABELS: Record<string, string> = {
   vision: "Analyzing your scene...",
   copy: "Crafting your post...",
   audio: "Generating music...",
-  frames: "Creating promo visuals...",
   video: "Compositing video...",
 };
 
-const STEP_ORDER = ["vision", "copy", "audio", "frames", "video"];
+const STEP_ORDER = ["vision", "copy", "audio", "video"];
 
 export default function Home() {
-  // Media state
-  const [media, setMedia] = useState<Blob | null>(null);
-  const [mediaType, setMediaType] = useState<"image" | "video">("image");
-  const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
+  // Media state — supports multiple images
+  const [images, setImages] = useState<{ blob: Blob; previewUrl: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form state
@@ -52,21 +49,35 @@ export default function Home() {
   const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
 
-  const handleCapture = useCallback((blob: Blob, type: "image" | "video") => {
-    setMedia(blob);
-    setMediaType(type);
-    setMediaPreviewUrl(null); // webcam shows its own preview
+  const addImage = useCallback((blob: Blob) => {
+    const previewUrl = URL.createObjectURL(blob);
+    setImages((prev) => [...prev, { blob, previewUrl }]);
   }, []);
 
+  const removeImage = (index: number) => {
+    setImages((prev) => {
+      const next = [...prev];
+      URL.revokeObjectURL(next[index].previewUrl);
+      next.splice(index, 1);
+      return next;
+    });
+  };
+
+  const handleCapture = useCallback((blob: Blob) => {
+    addImage(blob);
+  }, [addImage]);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const type = file.type.startsWith("video/") ? "video" : "image";
-    setMedia(file);
-    setMediaType(type);
-    // Create a preview URL for the uploaded file
-    if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
-    setMediaPreviewUrl(URL.createObjectURL(file));
+    const files = e.target.files;
+    if (!files) return;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith("image/")) {
+        addImage(file);
+      }
+    }
+    // Reset input so same file can be re-selected
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -85,7 +96,7 @@ export default function Home() {
   };
 
   const handleGenerate = async () => {
-    if (!media || !goal) return;
+    if (images.length === 0 || !goal) return;
 
     setGenerating(true);
     setActiveSteps(new Set());
@@ -95,11 +106,11 @@ export default function Home() {
     setSelectedPostId(null);
 
     const formData = new FormData();
-    formData.append("media", media);
+    images.forEach((img, i) => formData.append(`image_${i}`, img.blob));
+    formData.append("imageCount", String(images.length));
     formData.append("goal", goal);
     formData.append("platform", platform);
     formData.append("vibe", vibe || "professional but engaging");
-    formData.append("mediaType", mediaType);
 
     try {
       const res = await fetch("/api/generate", {
@@ -170,7 +181,7 @@ export default function Home() {
       : ("pending" as const),
   }));
 
-  const canGenerate = media && goal && !generating;
+  const canGenerate = images.length > 0 && goal && !generating;
 
   return (
     <div>
@@ -201,52 +212,65 @@ export default function Home() {
 
       {/* Center: Input */}
       <div className="space-y-5">
-        <h2 className="text-xl font-semibold">Capture</h2>
+        <h2 className="text-xl font-semibold">Images</h2>
 
-        {/* Show either uploaded file preview OR webcam — not both */}
-        {mediaPreviewUrl ? (
-          <div className="relative rounded-lg overflow-hidden border border-gray-700">
-            {mediaType === "video" ? (
-              <video src={mediaPreviewUrl} className="w-full rounded-lg" controls muted />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={mediaPreviewUrl} alt="Uploaded file" className="w-full rounded-lg" />
-            )}
-            <button
-              onClick={() => {
-                setMedia(null);
-                setMediaPreviewUrl(null);
-                if (fileInputRef.current) fileInputRef.current.value = "";
-              }}
-              className="absolute top-2 right-2 bg-black/60 hover:bg-black/80 rounded-full p-1 transition-colors"
-              title="Remove and use camera instead"
-            >
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+        {/* Image thumbnails */}
+        {images.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {images.map((img, i) => (
+              <div key={img.previewUrl} className="relative group w-20 h-20 rounded-lg overflow-hidden border border-gray-700 flex-shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={img.previewUrl} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
+                <button
+                  onClick={() => removeImage(i)}
+                  className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                >
+                  <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                {i === 0 && (
+                  <span className="absolute bottom-0 left-0 right-0 bg-blue-600/80 text-[9px] text-center text-white">Hero</span>
+                )}
+              </div>
+            ))}
           </div>
-        ) : (
-          <WebcamCapture onCapture={handleCapture} />
         )}
 
-        {/* File upload alternative */}
-        <div className="text-center">
-          <span className="text-xs text-gray-600">or</span>
+        {/* Upload button — primary action */}
+        <div>
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*,video/*"
+            accept="image/*"
+            multiple={true}
             onChange={handleFileUpload}
             className="hidden"
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="block w-full mt-1 py-2 text-sm text-gray-400 hover:text-gray-300 transition-colors"
+            className={`w-full py-3 text-sm rounded-lg transition-colors ${
+              images.length === 0
+                ? "bg-gray-800 hover:bg-gray-700 text-white border border-gray-600 hover:border-gray-500"
+                : "text-gray-400 hover:text-gray-300 border border-dashed border-gray-700 hover:border-gray-500"
+            }`}
           >
-            {mediaPreviewUrl ? "Upload a different file" : "Upload a file"}
+            {images.length === 0 ? "Upload Images" : `Add more images (${images.length} added)`}
           </button>
+          {images.length === 0 && (
+            <p className="text-[10px] text-gray-600 mt-1 text-center">Add 2-5 images for best results</p>
+          )}
         </div>
+
+        {/* Camera option — only show if no images yet */}
+        {images.length === 0 && (
+          <details className="text-center">
+            <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-400">or use camera</summary>
+            <div className="mt-2">
+              <WebcamCapture onCapture={handleCapture} />
+            </div>
+          </details>
+        )}
 
         {/* Form inputs */}
         <div className="space-y-3">
@@ -254,12 +278,12 @@ export default function Home() {
             <label className="block text-xs text-gray-500 mb-1">
               Post goal
             </label>
-            <input
-              type="text"
+            <textarea
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
-              placeholder="Share excitement about the hackathon"
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+              placeholder="Share excitement about the hackathon, highlight the energy and collaboration..."
+              rows={3}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 resize-y"
             />
           </div>
 
@@ -299,10 +323,9 @@ export default function Home() {
           {generating ? "Generating..." : "Generate Post"}
         </button>
 
-        {media && !generating && !result && (
+        {images.length > 0 && !generating && !result && (
           <p className="text-xs text-gray-600 text-center">
-            {mediaType === "image" ? "Photo" : "Video"} captured — fill in the
-            details and hit Generate
+            {images.length} {images.length === 1 ? "image" : "images"} ready — fill in the details and hit Generate
           </p>
         )}
       </div>

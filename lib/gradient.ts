@@ -14,34 +14,64 @@ function getClient(): OpenAI {
   return _openai;
 }
 
-// --- Vision: Analyze an image using GPT-4o on Gradient ---
+// --- Vision: Analyze images and determine optimal order for promo video ---
 
-export async function analyzeImage(base64Image: string): Promise<string> {
-  const dataUrl = base64Image.startsWith("data:")
-    ? base64Image
-    : `data:image/jpeg;base64,${base64Image}`;
+export async function analyzeImages(base64Images: string[]): Promise<{ description: string; order: number[] }> {
+  const imageContent = base64Images.map((img, i) => {
+    const dataUrl = img.startsWith("data:") ? img : `data:image/jpeg;base64,${img}`;
+    return [
+      { type: "text" as const, text: `Image ${i + 1}:` },
+      { type: "image_url" as const, image_url: { url: dataUrl } },
+    ];
+  }).flat();
 
   const response = await getClient().chat.completions.create({
-    model: "openai-gpt-4o",
+    model: "openai-gpt-4.1",
     messages: [
       {
         role: "user",
         content: [
           {
             type: "text",
-            text: "Describe this scene in vivid detail. Focus on the people, their expressions and body language, the environment, the energy of the moment, and any notable objects or context clues. Be specific and evocative — this description will be used to generate social media content.",
+            text: `You are sequencing images for a professional social media promo video. You have ${base64Images.length} images.
+
+Analyze all images and respond with valid JSON containing:
+1. "description" — A vivid, evocative description of the overall scene/event across all images. Focus on people, energy, environment, and context. This will be used to generate post copy.
+2. "order" — An array of image numbers (1-indexed) in the optimal order for a promo video. The FIRST image should be the most visually striking/hero-worthy shot. Then sequence the rest for maximum narrative flow and visual variety. Consider: wide shots before close-ups, building energy, alternating compositions.
+
+Example response: {"description": "A vibrant hackathon...", "order": [3, 1, 2, 4]}
+
+Respond ONLY with valid JSON.`,
           },
-          {
-            type: "image_url",
-            image_url: { url: dataUrl },
-          },
+          ...imageContent,
         ],
       },
     ],
-    max_tokens: 500,
+    max_tokens: 800,
   });
 
-  return response.choices[0]?.message?.content ?? "A scene captured in the moment.";
+  const raw = response.choices[0]?.message?.content ?? "";
+
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      description: parsed.description ?? "A scene captured in the moment.",
+      order: Array.isArray(parsed.order) ? parsed.order : base64Images.map((_, i) => i + 1),
+    };
+  } catch {
+    const match = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (match) {
+      const parsed = JSON.parse(match[1].trim());
+      return {
+        description: parsed.description ?? "A scene captured in the moment.",
+        order: Array.isArray(parsed.order) ? parsed.order : base64Images.map((_, i) => i + 1),
+      };
+    }
+    return {
+      description: raw,
+      order: base64Images.map((_, i) => i + 1),
+    };
+  }
 }
 
 // --- Text: Generate LinkedIn copy + music prompt ---
@@ -55,7 +85,7 @@ export async function generateCopyAndMusicPrompt(params: {
   const { description, platform, goal, vibe } = params;
 
   const response = await getClient().chat.completions.create({
-    model: "openai-gpt-4o",
+    model: "openai-gpt-4.1",
     messages: [
       {
         role: "system",
@@ -63,14 +93,14 @@ export async function generateCopyAndMusicPrompt(params: {
 
 1. "copy" — The post caption/message text optimized for ${platform}. This is what appears as the text accompanying a video post. It should be compelling, on-brand for the platform, and achieve the stated goal. Include relevant hashtags if appropriate for the platform.
 
-2. "musicPrompt" — A detailed text prompt for an AI music generator to create a 10-15 second background music track for a promo-style social media video. Describe the genre, tempo, instruments, mood, and energy level. The music should match the requested vibe and feel like a polished social media ad or highlight reel. Be specific about production style.
+2. "musicPrompt" — A detailed text prompt for an AI music generator (Meta's MusicGen) to create a 10-15 second background music track. This music will be the soundtrack for a short promo video being posted to ${platform} as social media content. The music must sound professional and production-ready — think TV commercial, Instagram Reel, or LinkedIn promotional video. Describe the genre, tempo (100-130 BPM), instruments, mood, and energy. ALWAYS include: a strong beat/kick drum, a clear melody, and full instrumentation. Never request ambient, quiet, minimal, or atmospheric music. The track should grab attention in the first second and match the vibe of the promo video.
 
 3. "videoOverlays" — Exactly 3 ultra-short phrases (3-8 words each) for on-screen text overlays in a promo video. These will be displayed one at a time over dynamic visuals, so they must be punchy and scannable at a glance. First should be an attention-grabbing headline, second a key insight or point, third a call-to-action or hashtag line. Do NOT use special characters like colons or quotes.
 
 Examples of good music prompts:
-- "Upbeat electronic pop, 120 BPM, warm synth pads, punchy kick drum, energetic and inspiring, corporate promo feel, building to a crescendo"
-- "Lo-fi chill hip hop beat, 85 BPM, mellow piano chords, vinyl crackle, relaxed and warm, perfect for a casual lifestyle brand"
-- "Epic cinematic orchestral, 100 BPM, soaring strings, deep brass hits, triumphant and powerful, tech product launch energy"
+- "Upbeat electronic pop, 120 BPM, loud punchy kick drum, bright synth lead, warm pads, claps on every beat, energetic and inspiring, building to a powerful drop, radio-ready production, full master volume"
+- "Driving indie rock, 110 BPM, distorted electric guitar riff, tight snare, bass groove, confident and bold energy, sounds like a Nike commercial, loud and polished"
+- "Epic cinematic orchestral hit, 100 BPM, booming taiko drums, soaring brass fanfare, massive string section, timpani rolls, triumphant and powerful, blockbuster trailer energy, maximum intensity"
 
 Examples of good video overlays:
 - ["Innovation Starts Here", "Built by Builders", "#TechForward"]
@@ -182,11 +212,28 @@ async function asyncInvoke(modelId: string, input: Record<string, unknown>): Pro
   return resultRes.json();
 }
 
-export async function generateMusic(musicPrompt: string, retries = 1): Promise<Buffer> {
+// --- Audio: Generate music via MusicGen on GPU Droplet ---
+
+const GPU_SERVER_URL = `http://${process.env.DIGITAL_OCEAN_GPU_DROPLET_IP ?? "159.203.31.93"}:8000`;
+
+export async function generateMusic(musicPrompt: string, durationSeconds: number = 12, retries = 1): Promise<Buffer> {
   let lastError: Error | null = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      return await _generateMusicAttempt(musicPrompt);
+      const res = await fetch(`${GPU_SERVER_URL}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: musicPrompt,
+          duration_seconds: durationSeconds,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`MusicGen server error: ${res.status} ${await res.text()}`);
+      }
+
+      return Buffer.from(await res.arrayBuffer());
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt < retries) {
@@ -195,26 +242,6 @@ export async function generateMusic(musicPrompt: string, retries = 1): Promise<B
     }
   }
   throw lastError!;
-}
-
-async function _generateMusicAttempt(musicPrompt: string): Promise<Buffer> {
-  const result = await asyncInvoke("fal-ai/stable-audio-25/text-to-audio", {
-    prompt: musicPrompt,
-    seconds_total: 10,
-    steps: 50,
-  });
-
-  // Extract audio URL from result — structure is output.audio.url
-  const output = result?.output as Record<string, unknown> | undefined;
-  const audio = output?.audio as Record<string, string> | undefined;
-  const audioUrl = audio?.url;
-
-  if (audioUrl) {
-    const audioRes = await fetch(audioUrl);
-    return Buffer.from(await audioRes.arrayBuffer());
-  }
-
-  throw new Error("Could not extract audio from music generation result: " + JSON.stringify(result));
 }
 
 // --- Image: Generate stylized promo frames via Flux on Gradient ---
@@ -254,26 +281,3 @@ export async function generatePromoFrames(params: {
   return Promise.all(framePromises);
 }
 
-// --- Video: Generate video from image via GPU Droplet (SVD) ---
-
-const GPU_SERVER_URL = process.env.GPU_SERVER_URL ?? "http://159.203.31.93:8000";
-
-export async function generateVideoFromImage(imageBuffer: Buffer): Promise<Buffer> {
-  const formData = new FormData();
-  formData.append("image", new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" }), "input.jpg");
-  formData.append("num_frames", "25");
-  formData.append("fps", "7");
-  formData.append("motion_bucket_id", "127");
-  formData.append("noise_aug_strength", "0.02");
-
-  const res = await fetch(`${GPU_SERVER_URL}/generate`, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!res.ok) {
-    throw new Error(`GPU video generation failed: ${res.status} ${await res.text()}`);
-  }
-
-  return Buffer.from(await res.arrayBuffer());
-}

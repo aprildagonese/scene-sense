@@ -1,9 +1,9 @@
 import { randomUUID } from "crypto";
-import { mkdir, writeFile, readFile } from "fs/promises";
+import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { NextRequest } from "next/server";
-import { analyzeImage, generateCopyAndMusicPrompt, generateMusic, generateVideoFromImage, generatePromoFrames } from "@/lib/gradient";
-import { composePromoVideo, extractFrame } from "@/lib/ffmpeg";
+import { analyzeImages, generateCopyAndMusicPrompt, generateMusic } from "@/lib/gradient";
+import { composePromoVideo, calculateVideoDuration } from "@/lib/ffmpeg";
 import { query } from "@/lib/db";
 
 export const maxDuration = 120;
@@ -21,13 +21,12 @@ export async function POST(req: NextRequest) {
       try {
         // Parse multipart form data
         const formData = await req.formData();
-        const mediaFile = formData.get("media") as File | null;
         const goal = formData.get("goal") as string;
         const platform = formData.get("platform") as string;
         const vibe = formData.get("vibe") as string;
-        const mediaType = formData.get("mediaType") as string;
+        const imageCount = parseInt(formData.get("imageCount") as string, 10) || 0;
 
-        if (!mediaFile || !goal || !platform || !vibe) {
+        if (imageCount === 0 || !goal || !platform || !vibe) {
           send("error", { message: "Missing required fields" });
           controller.close();
           return;
@@ -38,29 +37,39 @@ export async function POST(req: NextRequest) {
         const workDir = path.join("/tmp", `scene-sense-${jobId}`);
         await mkdir(workDir, { recursive: true });
 
-        // Save uploaded media
-        const ext = mediaType === "video" ? "mp4" : "jpg";
-        const inputPath = path.join(workDir, `input.${ext}`);
-        const buffer = Buffer.from(await mediaFile.arrayBuffer());
-        await writeFile(inputPath, buffer);
+        // Save all uploaded images
+        const imagePaths: string[] = [];
+        for (let i = 0; i < imageCount; i++) {
+          const file = formData.get(`image_${i}`) as File | null;
+          if (!file) continue;
+          const imgPath = path.join(workDir, `input-${i}.jpg`);
+          const buffer = Buffer.from(await file.arrayBuffer());
+          await writeFile(imgPath, buffer);
+          imagePaths.push(imgPath);
+        }
 
-        // --- Step 1: Vision analysis ---
+        if (imagePaths.length === 0) {
+          send("error", { message: "No valid images received" });
+          controller.close();
+          return;
+        }
+
+        // --- Step 1: Vision analysis (analyze all images, pick optimal order) ---
         send("step", { step: "vision", status: "started" });
 
-        let imageBuffer: Buffer;
-        let imagePath: string;
-        if (mediaType === "video") {
-          const framePath = path.join(workDir, "frame.jpg");
-          await extractFrame(inputPath, framePath);
-          imageBuffer = await readFile(framePath);
-          imagePath = framePath;
-        } else {
-          imageBuffer = buffer;
-          imagePath = inputPath;
-        }
-        const imageBase64 = imageBuffer.toString("base64");
+        const { readFile } = await import("fs/promises");
+        const imageBuffers = await Promise.all(imagePaths.map(p => readFile(p)));
+        const base64Images = imageBuffers.map(buf => buf.toString("base64"));
 
-        const description = await analyzeImage(imageBase64);
+        const { description, order } = await analyzeImages(base64Images);
+
+        // Reorder imagePaths based on AI-selected order
+        const orderedPaths = order
+          .map(idx => imagePaths[idx - 1])  // 1-indexed to 0-indexed
+          .filter(Boolean);
+        // Fall back to original order if AI returned bad indices
+        const finalImagePaths = orderedPaths.length > 0 ? orderedPaths : imagePaths;
+
         send("step", { step: "vision", status: "completed", description });
 
         // --- Step 2: Copy + music prompt + video overlays ---
@@ -74,62 +83,29 @@ export async function POST(req: NextRequest) {
         });
         send("step", { step: "copy", status: "completed", copy, musicPrompt });
 
-        // --- Step 3: Music + SVD + Flux frames — all in parallel ---
+        // --- Step 3: Generate music (duration matched to video) ---
         send("step", { step: "audio", status: "started" });
-        send("step", { step: "frames", status: "started" });
 
+        const videoDuration = calculateVideoDuration(finalImagePaths.length);
         let musicBuffer: Buffer | null = null;
-        let svdVideoBuffer: Buffer | null = null;
-        let fluxFrameBuffers: Buffer[] = [];
         const audioPath = path.join(workDir, "music.wav");
 
-        const musicPromise = generateMusic(musicPrompt, 2).then(async (buf) => {
-          musicBuffer = buf;
-          await writeFile(audioPath, buf);
+        try {
+          musicBuffer = await generateMusic(musicPrompt, videoDuration, 2);
+          await writeFile(audioPath, musicBuffer);
           send("step", { step: "audio", status: "completed" });
-        }).catch((err) => {
-          console.warn("Music generation failed after retries:", err.message);
+        } catch (err) {
+          console.warn("Music generation failed after retries:", (err as Error).message);
           send("step", { step: "audio", status: "completed", warning: "Music unavailable — video will be silent" });
-        });
+        }
 
-        const svdPromise = generateVideoFromImage(imageBuffer).then((buf) => {
-          svdVideoBuffer = buf;
-        }).catch((err) => {
-          console.warn("GPU video generation failed, will use Ken Burns fallback:", err.message);
-        });
-
-        const fluxPromise = generatePromoFrames({ description, vibe, goal }).then((buffers) => {
-          fluxFrameBuffers = buffers;
-        }).catch((err) => {
-          console.warn("Flux frame generation failed:", err.message);
-        });
-
-        await Promise.all([musicPromise, svdPromise, fluxPromise]);
-        send("step", { step: "frames", status: "completed" });
-
-        // --- Step 4: Compose promo video ---
+        // --- Step 4: Compose promo video from images ---
         send("step", { step: "video", status: "started" });
-
-        // Write assets to disk
-        let svdVideoPath: string | null = null;
-        if (svdVideoBuffer) {
-          svdVideoPath = path.join(workDir, "svd-video.mp4");
-          await writeFile(svdVideoPath, svdVideoBuffer);
-        }
-
-        const fluxFramePaths: string[] = [];
-        for (let i = 0; i < fluxFrameBuffers.length; i++) {
-          const fp = path.join(workDir, `flux-frame-${i}.png`);
-          await writeFile(fp, fluxFrameBuffers[i]);
-          fluxFramePaths.push(fp);
-        }
 
         const outputPath = path.join(workDir, "output.mp4");
 
         await composePromoVideo({
-          inputImagePath: imagePath,
-          svdVideoPath,
-          fluxFramePaths,
+          imagePaths: finalImagePaths,
           audioPath: musicBuffer ? audioPath : null,
           overlayTexts: videoOverlays,
           workDir,

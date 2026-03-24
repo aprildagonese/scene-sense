@@ -2,7 +2,7 @@ name: scene-sense
 services:
   - name: web
     github:
-      repo: your-username/scene-sense
+      repo: aprildagonese/scene-sense
       branch: main
       deploy_on_push: true
     dockerfile_path: Dockerfile
@@ -13,7 +13,10 @@ services:
       - key: DIGITAL_OCEAN_MODEL_ACCESS_KEY
         scope: RUN_TIME
         type: SECRET
-      - key: DATABASE_URL
+      - key: DIGITAL_OCEAN_DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DIGITAL_OCEAN_GPU_DROPLET_IP
         scope: RUN_TIME
         type: SECRET
       - key: LINKEDIN_CLIENT_ID
@@ -25,9 +28,3 @@ services:
       - key: LINKEDIN_ACCESS_TOKEN
         scope: RUN_TIME
         type: SECRET
-      - key: LINKEDIN_REFRESH_TOKEN
-        scope: RUN_TIME
-        type: SECRET
-      - key: NEXT_PUBLIC_LINKEDIN_PROFILE_URL
-        scope: RUN_AND_BUILD_TIME
-        value: "https://www.linkedin.com/in/aprildag"
