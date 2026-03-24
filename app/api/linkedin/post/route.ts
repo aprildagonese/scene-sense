@@ -11,7 +11,7 @@ import {
 
 export async function POST(req: NextRequest) {
   try {
-    const { postId, copy } = await req.json();
+    const { postId, copy, testMode } = await req.json();
 
     // Get the post from DB
     const result = await query("SELECT * FROM posts WHERE id = $1", [postId]);
@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
       authorUrn,
       copy: copy ?? post.copy,
       assetUrn,
+      testMode: !!testMode,
     });
 
     // Mark as posted in DB

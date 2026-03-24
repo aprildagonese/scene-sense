@@ -7,12 +7,14 @@ interface QRCodeProps {
   url?: string;
   size?: number;
   darkOnLight?: boolean;
+  label?: string;
 }
 
 export default function QRCode({
-  url = process.env.NEXT_PUBLIC_LINKEDIN_PROFILE_URL ?? "https://www.linkedin.com/in/aprildag",
+  url = process.env.NEXT_PUBLIC_LINKEDIN_PROFILE_URL ?? "https://www.linkedin.com/in/aprildagonese/",
   size = 160,
   darkOnLight = false,
+  label = "Connect with me on LinkedIn",
 }: QRCodeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -31,7 +33,7 @@ export default function QRCode({
   return (
     <div className="flex flex-col items-center gap-2">
       <canvas ref={canvasRef} />
-      <p className="text-xs text-gray-500">Connect on LinkedIn</p>
+      {label && <p className="text-xs text-gray-500">{label}</p>}
     </div>
   );
 }

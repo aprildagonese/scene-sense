@@ -5,6 +5,8 @@ import WebcamCapture from "@/components/WebcamCapture";
 import ProgressOverlay from "@/components/ProgressOverlay";
 import OutputPanel from "@/components/OutputPanel";
 import DeployScreen from "@/components/DeployScreen";
+import PostsSidebar from "@/components/PostsSidebar";
+import QRCode from "@/components/QRCode";
 
 interface GenerateResult {
   id: number;
@@ -44,11 +46,13 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [showDeploy, setShowDeploy] = useState(false);
 
+  // Sidebar state
+  const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+
   const handleCapture = useCallback((blob: Blob, type: "image" | "video") => {
     setMedia(blob);
     setMediaType(type);
-    setResult(null);
-    setError(null);
   }, []);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -57,7 +61,19 @@ export default function Home() {
     const type = file.type.startsWith("video/") ? "video" : "image";
     setMedia(file);
     setMediaType(type);
-    setResult(null);
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleSelectPost = (post: any) => {
+    setResult({
+      id: post.id,
+      description: post.description ?? "",
+      copy: post.copy ?? "",
+      musicPrompt: post.narration ?? "",
+      videoUrl: post.video_url ?? "",
+      audioUrl: post.audio_url ?? "",
+    });
+    setSelectedPostId(post.id);
     setError(null);
   };
 
@@ -69,6 +85,7 @@ export default function Home() {
     setCompletedSteps(new Set());
     setResult(null);
     setError(null);
+    setSelectedPostId(null);
 
     const formData = new FormData();
     formData.append("media", media);
@@ -119,6 +136,9 @@ export default function Home() {
               }
             } else if (eventType === "complete") {
               setResult(data);
+              setSelectedPostId(data.id);
+              // Refresh sidebar to show the new post
+              setSidebarRefreshKey((k) => k + 1);
             } else if (eventType === "error") {
               setError(data.message);
             }
@@ -146,10 +166,33 @@ export default function Home() {
   const canGenerate = media && goal && !generating;
 
   return (
-    <>
+    <div>
     {showDeploy && <DeployScreen onClose={() => setShowDeploy(false)} />}
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Left: Input */}
+
+    {/* Fixed bottom: QR code center */}
+    <div className="fixed bottom-2 left-0 right-0 z-40 flex items-end justify-center pointer-events-none">
+      <div className="pointer-events-auto opacity-80 hover:opacity-100 transition-opacity">
+        <QRCode size={100} />
+      </div>
+    </div>
+    <button
+      onClick={() => setShowDeploy(true)}
+      className="fixed bottom-6 right-6 z-40 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm font-medium text-gray-300 hover:text-white transition-colors border border-gray-700"
+    >
+      Deploy 2026
+    </button>
+
+    <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr_1fr] gap-4 lg:gap-6">
+      {/* Sidebar: Recent Posts */}
+      <div className="hidden lg:block">
+        <PostsSidebar
+          selectedPostId={selectedPostId}
+          onSelect={handleSelectPost}
+          refreshKey={sidebarRefreshKey}
+        />
+      </div>
+
+      {/* Center: Input */}
       <div className="space-y-5">
         <h2 className="text-xl font-semibold">Capture</h2>
 
@@ -241,10 +284,20 @@ export default function Home() {
           </>
         )}
 
-        {result && (
+        {result && !generating && (
           <>
-            <h2 className="text-xl font-semibold mb-4">Your post is ready</h2>
-            <OutputPanel result={result} onShowDeploy={() => setShowDeploy(true)} />
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Your post is ready</h2>
+              <button
+                onClick={() => { setResult(null); setSelectedPostId(null); }}
+                className="text-gray-500 hover:text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <OutputPanel result={result} />
           </>
         )}
 
@@ -261,6 +314,6 @@ export default function Home() {
         )}
       </div>
     </div>
-    </>
+    </div>
   );
 }

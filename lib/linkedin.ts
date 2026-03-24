@@ -97,8 +97,12 @@ export async function createVideoPost(params: {
   authorUrn: string;
   copy: string;
   assetUrn: string;
+  testMode?: boolean;
 }): Promise<string> {
   const token = getAccessToken();
+  // CONNECTIONS = only your connections see it (good for testing)
+  // PUBLIC = everyone (use for the live demo)
+  const visibility = params.testMode ? "CONNECTIONS" : "PUBLIC";
   const res = await fetch(`${LINKEDIN_API}/ugcPosts`, {
     method: "POST",
     headers: {
@@ -122,7 +126,7 @@ export async function createVideoPost(params: {
         },
       },
       visibility: {
-        "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
+        "com.linkedin.ugc.MemberNetworkVisibility": visibility,
       },
     }),
   });

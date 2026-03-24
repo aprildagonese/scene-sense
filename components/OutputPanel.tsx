@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import QRCode from "./QRCode";
 
 interface GenerateResult {
   id: number;
@@ -14,15 +13,16 @@ interface GenerateResult {
 
 interface OutputPanelProps {
   result: GenerateResult;
-  onShowDeploy: () => void;
 }
 
-export default function OutputPanel({ result, onShowDeploy }: OutputPanelProps) {
+export default function OutputPanel({ result }: OutputPanelProps) {
   const [copy, setCopy] = useState(result.copy);
   const [copied, setCopied] = useState(false);
   const [posting, setPosting] = useState(false);
   const [posted, setPosted] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
   const [showDescription, setShowDescription] = useState(false);
+  const [confirmPost, setConfirmPost] = useState<{ testMode: boolean } | null>(null);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(copy);
@@ -30,22 +30,26 @@ export default function OutputPanel({ result, onShowDeploy }: OutputPanelProps) 
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handlePost = async () => {
+  const handlePost = async (testMode = false) => {
     setPosting(true);
+    setPostError(null);
     try {
       const res = await fetch("/api/linkedin/post", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ postId: result.id, copy }),
+        body: JSON.stringify({ postId: result.id, copy, testMode }),
       });
       const data = await res.json();
       if (data.success) {
         setPosted(true);
+      } else {
+        setPostError(data.error ?? "Post failed — use Copy Text as a fallback");
       }
     } catch {
-      // Silent fallback — manual posting UI is always visible
+      setPostError("Could not reach LinkedIn — use Copy Text as a fallback");
     } finally {
       setPosting(false);
+      setConfirmPost(null);
     }
   };
 
@@ -54,12 +58,14 @@ export default function OutputPanel({ result, onShowDeploy }: OutputPanelProps) 
       {/* Video player */}
       <div className="rounded-xl overflow-hidden border border-gray-700 bg-black">
         <video
-          src={result.videoUrl}
+          key={result.videoUrl}
           className="w-full"
           controls
           autoPlay
           playsInline
-        />
+        >
+          <source src={result.videoUrl} type="video/mp4" />
+        </video>
       </div>
 
       {/* Scene description (collapsible) */}
@@ -109,20 +115,65 @@ export default function OutputPanel({ result, onShowDeploy }: OutputPanelProps) 
         </button>
       </div>
 
+      {/* Confirmation dialog */}
+      {confirmPost && (
+        <div className="bg-gray-900 border border-gray-600 rounded-xl p-4 space-y-3">
+          <p className="text-sm font-medium">
+            {confirmPost.testMode
+              ? "Post to LinkedIn? (visible to connections only)"
+              : "Post publicly to LinkedIn?"}
+          </p>
+          <p className="text-xs text-gray-400 line-clamp-2">{copy.slice(0, 120)}...</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => handlePost(confirmPost.testMode)}
+              disabled={posting}
+              className={`flex-1 py-2 rounded-lg font-semibold text-sm transition-colors disabled:opacity-50 ${
+                confirmPost.testMode
+                  ? "bg-gray-600 hover:bg-gray-500"
+                  : "bg-blue-600 hover:bg-blue-500"
+              }`}
+            >
+              {posting ? "Posting..." : "Confirm"}
+            </button>
+            <button
+              onClick={() => setConfirmPost(null)}
+              className="flex-1 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm font-medium transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Action buttons */}
       <div className="space-y-2">
-        {!posted ? (
-          <button
-            onClick={handlePost}
-            disabled={posting}
-            className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 font-semibold transition-colors disabled:opacity-50"
-          >
-            {posting ? "Posting..." : "Post to LinkedIn"}
-          </button>
-        ) : (
+        {!posted && !confirmPost ? (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setConfirmPost({ testMode: false })}
+              disabled={posting}
+              className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 font-semibold transition-colors disabled:opacity-50"
+            >
+              Post to LinkedIn
+            </button>
+            <button
+              onClick={() => setConfirmPost({ testMode: true })}
+              disabled={posting}
+              className="py-3 px-4 rounded-xl bg-gray-700 hover:bg-gray-600 text-sm font-medium transition-colors disabled:opacity-50"
+              title="Post visible only to your connections (for testing)"
+            >
+              Test
+            </button>
+          </div>
+        ) : posted ? (
           <div className="w-full py-3 rounded-xl bg-green-600/20 border border-green-600/40 text-center font-semibold text-green-400">
             Posted to LinkedIn
           </div>
+        ) : null}
+
+        {postError && (
+          <p className="text-xs text-red-400">{postError}</p>
         )}
 
         <div className="flex gap-2">
@@ -142,18 +193,6 @@ export default function OutputPanel({ result, onShowDeploy }: OutputPanelProps) 
         </div>
       </div>
 
-      {/* QR Code */}
-      <div className="pt-4 border-t border-gray-800">
-        <QRCode />
-      </div>
-
-      {/* Deploy 2026 CTA */}
-      <button
-        onClick={onShowDeploy}
-        className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-700 hover:from-blue-500 hover:to-purple-600 font-semibold transition-all text-white shadow-lg shadow-purple-500/20"
-      >
-        Show Deploy 2026 Registration
-      </button>
     </div>
   );
 }
