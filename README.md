@@ -26,7 +26,7 @@ Everything runs on DigitalOcean — that's the point.
 | **Music** | [GPU Droplet](https://www.digitalocean.com/products/gpu-droplets) (RTX 4000 Ada) | Runs [MusicGen](https://github.com/facebookresearch/audiocraft) (Meta, open-weight) to generate background music from text prompts |
 | **Video** | FFmpeg | Composes the final promo video: Ken Burns effects, text overlays, audio mixing |
 | **Database** | [Managed PostgreSQL](https://www.digitalocean.com/products/managed-databases-postgresql) | Stores all generated posts with history |
-| **Hosting** | [App Platform](https://www.digitalocean.com/products/app-platform) | Deploys the Next.js app from GitHub |
+| **Hosting** | Local / [App Platform](https://www.digitalocean.com/products/app-platform) | Runs locally for dev; deployable to App Platform via GitHub |
 
 ### Models used
 
