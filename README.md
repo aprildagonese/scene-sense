@@ -24,7 +24,7 @@ Everything runs on DigitalOcean — that's the point.
 |-------|---------|-------------|
 | **Vision + Text** | [Gradient Serverless Inference](https://www.digitalocean.com/products/gradient-ai-platform) | GPT-4.1 analyzes images and generates copy, music prompts, and video overlay text |
 | **Music** | [GPU Droplet](https://www.digitalocean.com/products/gpu-droplets) (RTX 4000 Ada) | Runs [MusicGen](https://github.com/facebookresearch/audiocraft) (Meta, open-weight) to generate background music from text prompts |
-| **Video** | FFmpeg (on App Platform) | Composes the final promo video: Ken Burns effects, text overlays, audio mixing |
+| **Video** | FFmpeg | Composes the final promo video: Ken Burns effects, text overlays, audio mixing |
 | **Database** | [Managed PostgreSQL](https://www.digitalocean.com/products/managed-databases-postgresql) | Stores all generated posts with history |
 | **Hosting** | [App Platform](https://www.digitalocean.com/products/app-platform) | Deploys the Next.js app from GitHub |
 
