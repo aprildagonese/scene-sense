@@ -143,15 +143,29 @@ async function asyncInvoke(modelId: string, input: Record<string, unknown>): Pro
   // Step 2: Poll until completed (2s interval, 180s timeout)
   const deadline = Date.now() + 180_000;
   let completed = false;
+  let pollErrors = 0;
   while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 2000));
 
-    const statusRes = await fetch(`${ASYNC_BASE}/${request_id}/status`, { headers });
-    const statusData = (await statusRes.json()) as { status: string };
+    try {
+      const statusRes = await fetch(`${ASYNC_BASE}/${request_id}/status`, { headers });
+      if (!statusRes.ok) {
+        pollErrors++;
+        if (pollErrors > 5) throw new Error(`Status poll failed repeatedly (${modelId}): ${statusRes.status}`);
+        continue;
+      }
+      const statusData = (await statusRes.json()) as { status: string };
+      pollErrors = 0; // reset on success
 
-    if (statusData.status === "COMPLETED") { completed = true; break; }
-    if (statusData.status !== "QUEUED" && statusData.status !== "IN_PROGRESS") {
-      throw new Error(`Async job failed (${modelId}): ${statusData.status}`);
+      if (statusData.status === "COMPLETED") { completed = true; break; }
+      if (statusData.status !== "QUEUED" && statusData.status !== "IN_PROGRESS") {
+        throw new Error(`Async job failed (${modelId}): ${statusData.status}`);
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("Async job failed")) throw err;
+      pollErrors++;
+      if (pollErrors > 5) throw err;
+      console.warn(`Poll error (${pollErrors}/5) for ${modelId}:`, err);
     }
   }
 
@@ -168,7 +182,22 @@ async function asyncInvoke(modelId: string, input: Record<string, unknown>): Pro
   return resultRes.json();
 }
 
-export async function generateMusic(musicPrompt: string): Promise<Buffer> {
+export async function generateMusic(musicPrompt: string, retries = 1): Promise<Buffer> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await _generateMusicAttempt(musicPrompt);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < retries) {
+        console.warn(`Music generation attempt ${attempt + 1} failed, retrying:`, lastError.message);
+      }
+    }
+  }
+  throw lastError!;
+}
+
+async function _generateMusicAttempt(musicPrompt: string): Promise<Buffer> {
   const result = await asyncInvoke("fal-ai/stable-audio-25/text-to-audio", {
     prompt: musicPrompt,
     seconds_total: 10,
