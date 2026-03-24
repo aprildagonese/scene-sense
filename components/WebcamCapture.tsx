@@ -37,13 +37,12 @@ export default function WebcamCapture({ onCapture }: WebcamCaptureProps) {
     setActive(false);
   }, []);
 
-  // Preload camera on mount
+  // Clean up camera on unmount (don't auto-start — user clicks "Enable Camera")
   useEffect(() => {
-    startCamera();
     return () => {
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const capturePhoto = useCallback(() => {
     const video = videoRef.current;

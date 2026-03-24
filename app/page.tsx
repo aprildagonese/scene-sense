@@ -1,12 +1,31 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import WebcamCapture from "@/components/WebcamCapture";
 import ProgressOverlay from "@/components/ProgressOverlay";
 import OutputPanel from "@/components/OutputPanel";
 import DeployScreen from "@/components/DeployScreen";
 import PostsSidebar from "@/components/PostsSidebar";
 import QRCode from "@/components/QRCode";
+
+function CameraToggle({ onCapture }: { onCapture: (blob: Blob) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="text-center">
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-xs text-gray-600 cursor-pointer hover:text-gray-400"
+      >
+        {open ? "▾ hide camera" : "▸ or use camera"}
+      </button>
+      {open && (
+        <div className="mt-2">
+          <WebcamCapture onCapture={onCapture} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface GenerateResult {
   id: number;
@@ -48,6 +67,27 @@ export default function Home() {
   // Sidebar state
   const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+
+  // Reset everything when "Scene Sense" logo is clicked
+  useEffect(() => {
+    const handleReset = () => {
+      images.forEach((img) => URL.revokeObjectURL(img.previewUrl));
+      setImages([]);
+      setGoal("");
+      setPlatform("LinkedIn");
+      setVibe("");
+      setGenerating(false);
+      setActiveSteps(new Set());
+      setCompletedSteps(new Set());
+      setResult(null);
+      setError(null);
+      setSelectedPostId(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+    window.addEventListener("scene-sense-reset", handleReset);
+    return () => window.removeEventListener("scene-sense-reset", handleReset);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const addImage = useCallback((blob: Blob) => {
     const previewUrl = URL.createObjectURL(blob);
@@ -189,8 +229,8 @@ export default function Home() {
 
     {/* Fixed bottom: QR code center */}
     <div className="fixed bottom-2 left-0 right-0 z-40 flex items-end justify-center pointer-events-none">
-      <div className="pointer-events-auto opacity-80 hover:opacity-100 transition-opacity">
-        <QRCode size={100} />
+      <div className="pointer-events-auto">
+        <QRCode size={140} />
       </div>
     </div>
     <button
@@ -264,12 +304,7 @@ export default function Home() {
 
         {/* Camera option — only show if no images yet */}
         {images.length === 0 && (
-          <details className="text-center">
-            <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-400">or use camera</summary>
-            <div className="mt-2">
-              <WebcamCapture onCapture={handleCapture} />
-            </div>
-          </details>
+          <CameraToggle onCapture={handleCapture} />
         )}
 
         {/* Form inputs */}

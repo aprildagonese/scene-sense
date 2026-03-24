@@ -29,7 +29,7 @@ export default function DeployScreen({ onClose }: DeployScreenProps) {
       </p>
 
       {/* QR Code — extra large for audience visibility from back of room */}
-      <QRCode url={DEPLOY_URL} size={480} darkOnLight label="" />
+      <QRCode url={DEPLOY_URL} size={360} darkOnLight label="" />
 
       {/* URL fallback */}
       <p className="text-xl text-gray-500 font-mono">
