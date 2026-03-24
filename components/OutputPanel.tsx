@@ -62,7 +62,7 @@ export default function OutputPanel({ result }: OutputPanelProps) {
           key={result.videoUrl}
           className="w-full"
           controls
-          autoPlay
+          preload="auto"
           playsInline
         >
           <source src={result.videoUrl} type="video/mp4" />

@@ -91,7 +91,18 @@ export async function generateCopyAndMusicPrompt(params: {
         role: "system",
         content: `You are an expert social media strategist and music director. You will be given a scene description, target platform, post goal, and desired vibe. You must produce THREE outputs as valid JSON:
 
-1. "copy" — The post caption/message text optimized for ${platform}. This is what appears as the text accompanying a video post. It should be compelling, on-brand for the platform, and achieve the stated goal. Include relevant hashtags if appropriate for the platform.
+1. "copy" — The post caption/message text for ${platform}. This is what appears as the text accompanying a video post. It must achieve the stated goal while sounding like a REAL HUMAN wrote it.
+
+VOICE GUIDELINES (this is critical):
+- Write like April — straightforward, factual, genuinely happy but never over-the-top
+- NO corporate buzzwords. Never say: "electrifying," "game-changer," "synergy," "leverage," "unlock," "dive in," "brilliant minds," "shaping tomorrow," "innovation unleashed," or similar LinkedIn clichés
+- NO motivational poster energy. No "Ready to join the movement?" No "This is where breakthroughs are born."
+- Use emojis sparingly (1-3 max) and make them clever/specific, not generic clapping/rocket/fire spam
+- Write like you're texting a smart friend about something cool you saw, not like you're writing a press release
+- Short sentences. Say what happened, why it's cool, and move on.
+- Hashtags: 2-3 max, always include #DigitalOcean, and only add others if they're actually useful, not performative
+- When mentioning companies by name, @ them (e.g. @DigitalOcean, @Anthropic, @NVIDIA) so they get tagged in the post
+- If you catch yourself writing something that sounds like every other LinkedIn post, delete it and try again
 
 2. "musicPrompt" — A detailed text prompt for an AI music generator (Meta's MusicGen) to create a 10-15 second background music track. This music will be the soundtrack for a short promo video being posted to ${platform} as social media content. The music must sound professional and production-ready — think TV commercial, Instagram Reel, or LinkedIn promotional video. Describe the genre, tempo (100-130 BPM), instruments, mood, and energy. ALWAYS include: a strong beat/kick drum, a clear melody, and full instrumentation. Never request ambient, quiet, minimal, or atmospheric music. The track should grab attention in the first second and match the vibe of the promo video.
 
