@@ -6,11 +6,13 @@ import QRCodeLib from "qrcode";
 interface QRCodeProps {
   url?: string;
   size?: number;
+  darkOnLight?: boolean;
 }
 
 export default function QRCode({
   url = process.env.NEXT_PUBLIC_LINKEDIN_PROFILE_URL ?? "https://www.linkedin.com/in/aprildag",
   size = 160,
+  darkOnLight = false,
 }: QRCodeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -19,10 +21,12 @@ export default function QRCode({
       QRCodeLib.toCanvas(canvasRef.current, url, {
         width: size,
         margin: 2,
-        color: { dark: "#ffffffFF", light: "#00000000" },
+        color: darkOnLight
+          ? { dark: "#000000FF", light: "#FFFFFFFF" }
+          : { dark: "#ffffffFF", light: "#00000000" },
       });
     }
-  }, [url, size]);
+  }, [url, size, darkOnLight]);
 
   return (
     <div className="flex flex-col items-center gap-2">

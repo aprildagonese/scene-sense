@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import WebcamCapture from "@/components/WebcamCapture";
 import ProgressOverlay from "@/components/ProgressOverlay";
 import OutputPanel from "@/components/OutputPanel";
+import DeployScreen from "@/components/DeployScreen";
 
 interface GenerateResult {
   id: number;
@@ -41,6 +42,7 @@ export default function Home() {
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showDeploy, setShowDeploy] = useState(false);
 
   const handleCapture = useCallback((blob: Blob, type: "image" | "video") => {
     setMedia(blob);
@@ -144,6 +146,8 @@ export default function Home() {
   const canGenerate = media && goal && !generating;
 
   return (
+    <>
+    {showDeploy && <DeployScreen onClose={() => setShowDeploy(false)} />}
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Left: Input */}
       <div className="space-y-5">
@@ -240,7 +244,7 @@ export default function Home() {
         {result && (
           <>
             <h2 className="text-xl font-semibold mb-4">Your post is ready</h2>
-            <OutputPanel result={result} />
+            <OutputPanel result={result} onShowDeploy={() => setShowDeploy(true)} />
           </>
         )}
 
@@ -257,5 +261,6 @@ export default function Home() {
         )}
       </div>
     </div>
+    </>
   );
 }

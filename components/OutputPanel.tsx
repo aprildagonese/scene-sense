@@ -14,9 +14,10 @@ interface GenerateResult {
 
 interface OutputPanelProps {
   result: GenerateResult;
+  onShowDeploy: () => void;
 }
 
-export default function OutputPanel({ result }: OutputPanelProps) {
+export default function OutputPanel({ result, onShowDeploy }: OutputPanelProps) {
   const [copy, setCopy] = useState(result.copy);
   const [copied, setCopied] = useState(false);
   const [posting, setPosting] = useState(false);
@@ -145,6 +146,14 @@ export default function OutputPanel({ result }: OutputPanelProps) {
       <div className="pt-4 border-t border-gray-800">
         <QRCode />
       </div>
+
+      {/* Deploy 2026 CTA */}
+      <button
+        onClick={onShowDeploy}
+        className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-700 hover:from-blue-500 hover:to-purple-600 font-semibold transition-all text-white shadow-lg shadow-purple-500/20"
+      >
+        Show Deploy 2026 Registration
+      </button>
     </div>
   );
 }

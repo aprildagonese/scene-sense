@@ -51,7 +51,7 @@ export async function generateCopyAndMusicPrompt(params: {
   platform: string;
   goal: string;
   vibe: string;
-}): Promise<{ copy: string; musicPrompt: string }> {
+}): Promise<{ copy: string; musicPrompt: string; videoOverlays: string[] }> {
   const { description, platform, goal, vibe } = params;
 
   const response = await getClient().chat.completions.create({
@@ -59,18 +59,24 @@ export async function generateCopyAndMusicPrompt(params: {
     messages: [
       {
         role: "system",
-        content: `You are an expert social media strategist and music director. You will be given a scene description, target platform, post goal, and desired vibe. You must produce TWO outputs as valid JSON:
+        content: `You are an expert social media strategist and music director. You will be given a scene description, target platform, post goal, and desired vibe. You must produce THREE outputs as valid JSON:
 
 1. "copy" — The post caption/message text optimized for ${platform}. This is what appears as the text accompanying a video post. It should be compelling, on-brand for the platform, and achieve the stated goal. Include relevant hashtags if appropriate for the platform.
 
 2. "musicPrompt" — A detailed text prompt for an AI music generator to create a 10-15 second background music track for a promo-style social media video. Describe the genre, tempo, instruments, mood, and energy level. The music should match the requested vibe and feel like a polished social media ad or highlight reel. Be specific about production style.
+
+3. "videoOverlays" — Exactly 3 ultra-short phrases (3-8 words each) for on-screen text overlays in a promo video. These will be displayed one at a time over dynamic visuals, so they must be punchy and scannable at a glance. First should be an attention-grabbing headline, second a key insight or point, third a call-to-action or hashtag line. Do NOT use special characters like colons or quotes.
 
 Examples of good music prompts:
 - "Upbeat electronic pop, 120 BPM, warm synth pads, punchy kick drum, energetic and inspiring, corporate promo feel, building to a crescendo"
 - "Lo-fi chill hip hop beat, 85 BPM, mellow piano chords, vinyl crackle, relaxed and warm, perfect for a casual lifestyle brand"
 - "Epic cinematic orchestral, 100 BPM, soaring strings, deep brass hits, triumphant and powerful, tech product launch energy"
 
-Respond ONLY with valid JSON: {"copy": "...", "musicPrompt": "..."}`,
+Examples of good video overlays:
+- ["Innovation Starts Here", "Built by Builders", "#TechForward"]
+- ["The Future is Now", "One Platform Does It All", "Join the Movement"]
+
+Respond ONLY with valid JSON: {"copy": "...", "musicPrompt": "...", "videoOverlays": ["...", "...", "..."]}`,
       },
       {
         role: "user",
@@ -87,15 +93,26 @@ Vibe: ${vibe}`,
   const raw = response.choices[0]?.message?.content ?? "";
 
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return {
+      copy: parsed.copy ?? raw,
+      musicPrompt: parsed.musicPrompt ?? `${vibe} background music for a social media promo video, polished and energetic`,
+      videoOverlays: Array.isArray(parsed.videoOverlays) ? parsed.videoOverlays.slice(0, 3) : ["The Moment", "The Vision", "#MakeItReal"],
+    };
   } catch {
     const match = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (match) {
-      return JSON.parse(match[1].trim());
+      const parsed = JSON.parse(match[1].trim());
+      return {
+        copy: parsed.copy ?? raw,
+        musicPrompt: parsed.musicPrompt ?? `${vibe} background music for a social media promo video, polished and energetic`,
+        videoOverlays: Array.isArray(parsed.videoOverlays) ? parsed.videoOverlays.slice(0, 3) : ["The Moment", "The Vision", "#MakeItReal"],
+      };
     }
     return {
       copy: raw,
       musicPrompt: `${vibe} background music for a social media promo video, polished and energetic`,
+      videoOverlays: ["The Moment", "The Vision", "#MakeItReal"],
     };
   }
 }
@@ -177,16 +194,15 @@ export async function generatePromoFrames(params: {
   description: string;
   vibe: string;
   goal: string;
-  count?: number;
 }): Promise<Buffer[]> {
-  const { description, vibe, goal, count = 3 } = params;
+  const { description, vibe, goal } = params;
 
-  // Generate varied prompts for each frame
+  // Frame 1: stylized version of the actual scene (stays grounded in input)
+  // Frame 2: abstract/energetic interpretation (creative freedom)
   const framePrompts = [
-    `Cinematic wide shot, ${vibe} atmosphere: ${description}. Professional social media promo style, vibrant colors, dramatic lighting, 4K quality`,
-    `Dynamic close-up detail shot, ${vibe} energy: ${description}. Editorial photography style, shallow depth of field, rich tones, magazine quality`,
-    `Stylized artistic interpretation, ${vibe} mood: ${description}. Modern graphic design aesthetic, bold composition, ${goal}, premium brand feel`,
-  ].slice(0, count);
+    `Stylized cinematic still of this exact scene: ${description}. Rendered in a ${vibe} visual style with dramatic lighting, color grading, and lens flare. Professional social media ad quality, 16:9, 4K`,
+    `Abstract creative visual representing the energy of: ${goal}. ${vibe} mood, bold geometric shapes, dynamic motion blur, neon accents, modern tech aesthetic, premium brand feel, 16:9, 4K`,
+  ];
 
   // Generate all frames in parallel
   const framePromises = framePrompts.map(async (prompt) => {
