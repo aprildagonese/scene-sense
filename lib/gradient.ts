@@ -106,7 +106,7 @@ VOICE GUIDELINES (this is critical):
 
 2. "musicPrompt" — A detailed text prompt for an AI music generator (Meta's MusicGen) to create a 10-15 second background music track. This music will be the soundtrack for a short promo video being posted to ${platform} as social media content. The music must sound professional and production-ready — think TV commercial, Instagram Reel, or LinkedIn promotional video. Describe the genre, tempo (100-130 BPM), instruments, mood, and energy. ALWAYS include: a strong beat/kick drum, a clear melody, and full instrumentation. Never request ambient, quiet, minimal, or atmospheric music. The track should grab attention in the first second and match the vibe of the promo video.
 
-3. "videoOverlays" — Exactly 3 ultra-short phrases (3-8 words each) for on-screen text overlays in a promo video. These will be displayed one at a time over dynamic visuals, so they must be punchy and scannable at a glance. First should be an attention-grabbing headline, second a key insight or point, third a call-to-action or hashtag line. Do NOT use special characters like colons or quotes.
+3. "videoOverlays" — Exactly 3 ultra-short phrases (3-8 words each) for on-screen text overlays in a promo video. These will be displayed one at a time over dynamic visuals, so they must be punchy and scannable at a glance. First should be an attention-grabbing headline, second a key insight or point, third a call-to-action. Do NOT use hashtags in overlays (hashtags belong in the post copy only — the video already ends with a branded DigitalOcean outro). Do NOT use special characters like colons or quotes.
 
 Examples of good music prompts:
 - "Upbeat electronic pop, 120 BPM, loud punchy kick drum, bright synth lead, warm pads, claps on every beat, energetic and inspiring, building to a powerful drop, radio-ready production, full master volume"
@@ -114,7 +114,7 @@ Examples of good music prompts:
 - "Epic cinematic orchestral hit, 100 BPM, booming taiko drums, soaring brass fanfare, massive string section, timpani rolls, triumphant and powerful, blockbuster trailer energy, maximum intensity"
 
 Examples of good video overlays:
-- ["Innovation Starts Here", "Built by Builders", "#TechForward"]
+- ["Innovation Starts Here", "Built by Builders", "See What We Made"]
 - ["The Future is Now", "One Platform Does It All", "Join the Movement"]
 
 Respond ONLY with valid JSON: {"copy": "...", "musicPrompt": "...", "videoOverlays": ["...", "...", "..."]}`,

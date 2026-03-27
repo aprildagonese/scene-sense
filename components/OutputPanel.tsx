@@ -55,7 +55,7 @@ export default function OutputPanel({ result }: OutputPanelProps) {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Video player */}
       <div className="rounded-xl overflow-hidden border border-gray-700 bg-black">
         <video
@@ -101,7 +101,7 @@ export default function OutputPanel({ result }: OutputPanelProps) {
         <textarea
           value={copy}
           onChange={(e) => setCopy(e.target.value)}
-          rows={6}
+          rows={4}
           className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm resize-y focus:outline-none focus:border-blue-500"
         />
       </div>

@@ -227,11 +227,9 @@ export default function Home() {
     <div>
     {showDeploy && <DeployScreen onClose={() => setShowDeploy(false)} />}
 
-    {/* Fixed bottom: QR code center */}
-    <div className="fixed bottom-2 left-0 right-0 z-40 flex items-end justify-center pointer-events-none">
-      <div className="pointer-events-auto">
-        <QRCode size={140} />
-      </div>
+    {/* Fixed bottom-left: QR code */}
+    <div className="fixed bottom-4 left-4 z-40">
+      <QRCode size={100} />
     </div>
     <button
       onClick={() => setShowDeploy(true)}
@@ -365,8 +363,8 @@ export default function Home() {
         )}
       </div>
 
-      {/* Right: Output */}
-      <div>
+      {/* Right: Output — scrollable on laptop screens */}
+      <div className="lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto lg:pr-1">
         {generating && (
           <>
             <h2 className="text-xl font-semibold mb-2">Creating your post</h2>
