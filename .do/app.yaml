@@ -8,23 +8,35 @@ services:
     dockerfile_path: Dockerfile
     http_port: 8080
     instance_count: 1
-    instance_size_slug: professional-xs
+    instance_size_slug: professional-s
     envs:
-      - key: DIGITAL_OCEAN_MODEL_ACCESS_KEY
-        scope: RUN_TIME
-        type: SECRET
+      # DigitalOcean infrastructure
       - key: DIGITAL_OCEAN_DATABASE_URL
         scope: RUN_TIME
         type: SECRET
       - key: DIGITAL_OCEAN_GPU_DROPLET_IP
         scope: RUN_TIME
         type: SECRET
+      # Auth
+      - key: NEXTAUTH_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: NEXTAUTH_URL
+        scope: RUN_TIME
+        type: GENERAL
+      - key: GOOGLE_CLIENT_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: GOOGLE_CLIENT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: CREDENTIALS_ENCRYPTION_KEY
+        scope: RUN_TIME
+        type: SECRET
+      # LinkedIn OAuth app (shared)
       - key: LINKEDIN_CLIENT_ID
         scope: RUN_TIME
         type: SECRET
       - key: LINKEDIN_CLIENT_SECRET
-        scope: RUN_TIME
-        type: SECRET
-      - key: LINKEDIN_ACCESS_TOKEN
         scope: RUN_TIME
         type: SECRET

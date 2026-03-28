@@ -14,7 +14,10 @@ export interface SessionUser {
  */
 export async function getRequiredUser(): Promise<SessionUser> {
   const cookieStore = await cookies();
-  const sessionToken = cookieStore.get("authjs.session-token")?.value;
+  // NextAuth uses __Secure- prefix on HTTPS (production), plain name on HTTP (localhost)
+  const sessionToken =
+    cookieStore.get("__Secure-authjs.session-token")?.value ??
+    cookieStore.get("authjs.session-token")?.value;
 
   if (!sessionToken) {
     throw new Error("Unauthorized");
@@ -23,7 +26,10 @@ export async function getRequiredUser(): Promise<SessionUser> {
   const secret = process.env.NEXTAUTH_SECRET;
   if (!secret) throw new Error("NEXTAUTH_SECRET not set");
 
-  const token = await decode({ token: sessionToken, secret, salt: "authjs.session-token" });
+  // Salt must match the cookie name used
+  const isSecure = !!cookieStore.get("__Secure-authjs.session-token")?.value;
+  const salt = isSecure ? "__Secure-authjs.session-token" : "authjs.session-token";
+  const token = await decode({ token: sessionToken, secret, salt });
 
   if (!token?.email || !token?.userId) {
     throw new Error("Unauthorized");
