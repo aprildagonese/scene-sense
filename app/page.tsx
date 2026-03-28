@@ -82,7 +82,6 @@ export default function Home() {
       images.forEach((img) => URL.revokeObjectURL(img.previewUrl));
       setImages([]);
       setGoal("");
-      setPlatform("LinkedIn");
       setVibe("");
       setGenerating(false);
       setActiveSteps(new Set());
