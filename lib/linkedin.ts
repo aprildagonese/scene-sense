@@ -1,18 +1,21 @@
 const LINKEDIN_API = "https://api.linkedin.com/v2";
 
-let cachedAccessToken: string | null = null;
-
-function getAccessToken(): string {
-  return cachedAccessToken ?? process.env.LINKEDIN_ACCESS_TOKEN ?? "";
+export interface LinkedInTokens {
+  accessToken: string;
+  refreshToken?: string;
 }
 
-export async function refreshAccessToken(): Promise<string> {
+export async function refreshAccessToken(refreshToken: string): Promise<{
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}> {
   const res = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
-      refresh_token: process.env.LINKEDIN_REFRESH_TOKEN ?? "",
+      refresh_token: refreshToken,
       client_id: process.env.LINKEDIN_CLIENT_ID ?? "",
       client_secret: process.env.LINKEDIN_CLIENT_SECRET ?? "",
     }),
@@ -23,14 +26,16 @@ export async function refreshAccessToken(): Promise<string> {
   }
 
   const data = await res.json();
-  cachedAccessToken = data.access_token;
-  return data.access_token;
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? refreshToken,
+    expiresIn: data.expires_in ?? 5184000,
+  };
 }
 
-export async function getAuthorUrn(): Promise<string> {
-  const token = getAccessToken();
+export async function getAuthorUrn(accessToken: string): Promise<string> {
   const res = await fetch(`${LINKEDIN_API}/userinfo`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
 
   if (!res.ok) throw new Error(`LinkedIn userinfo failed: ${res.status}`);
@@ -39,15 +44,15 @@ export async function getAuthorUrn(): Promise<string> {
 }
 
 export async function registerVideoUpload(
-  authorUrn: string
+  authorUrn: string,
+  accessToken: string,
 ): Promise<{ uploadUrl: string; assetUrn: string }> {
-  const token = getAccessToken();
   const res = await fetch(
     `${LINKEDIN_API}/assets?action=registerUpload`,
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
         "X-Restli-Protocol-Version": "2.0.0",
       },
@@ -78,13 +83,13 @@ export async function registerVideoUpload(
 
 export async function uploadVideoToLinkedIn(
   uploadUrl: string,
-  videoBuffer: Buffer
+  videoBuffer: Buffer,
+  accessToken: string,
 ): Promise<void> {
-  const token = getAccessToken();
   const res = await fetch(uploadUrl, {
     method: "PUT",
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/octet-stream",
     },
     body: new Uint8Array(videoBuffer),
@@ -97,16 +102,14 @@ export async function createVideoPost(params: {
   authorUrn: string;
   copy: string;
   assetUrn: string;
+  accessToken: string;
   testMode?: boolean;
 }): Promise<string> {
-  const token = getAccessToken();
-  // CONNECTIONS = only your connections see it (good for testing)
-  // PUBLIC = everyone (use for the live demo)
   const visibility = params.testMode ? "CONNECTIONS" : "PUBLIC";
   const res = await fetch(`${LINKEDIN_API}/ugcPosts`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${params.accessToken}`,
       "Content-Type": "application/json",
       "X-Restli-Protocol-Version": "2.0.0",
     },
@@ -137,5 +140,5 @@ export async function createVideoPost(params: {
   }
 
   const data = await res.json();
-  return data.id; // UGC post URN
+  return data.id;
 }

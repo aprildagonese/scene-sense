@@ -20,6 +20,33 @@ export async function POST() {
       );
     `);
 
+    // Multi-user tables
+    await query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id          SERIAL PRIMARY KEY,
+        email       TEXT NOT NULL UNIQUE,
+        name        TEXT,
+        image       TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS user_credentials (
+        user_id                 INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        do_api_key_encrypted    TEXT,
+        linkedin_access_token   TEXT,
+        linkedin_refresh_token  TEXT,
+        linkedin_token_expires  TIMESTAMPTZ,
+        linkedin_author_urn     TEXT,
+        updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // Add user_id to posts (nullable for existing rows)
+    await query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id);`);
+
     return NextResponse.json({ success: true, message: "Migration complete" });
   } catch (error) {
     console.error("Migration failed:", error);

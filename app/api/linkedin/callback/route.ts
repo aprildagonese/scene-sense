@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile } from "fs/promises";
-import path from "path";
+import { query } from "@/lib/db";
+import { encrypt } from "@/lib/crypto";
+import { getAuthorUrn } from "@/lib/linkedin";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
+  const stateParam = req.nextUrl.searchParams.get("state");
   const error = req.nextUrl.searchParams.get("error");
 
   if (error || !code) {
@@ -17,14 +19,24 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // Decode userId from state
+  let userId: number;
+  try {
+    const stateData = JSON.parse(Buffer.from(stateParam ?? "", "base64url").toString());
+    userId = stateData.userId;
+  } catch {
+    return new NextResponse("Invalid state parameter", { status: 400 });
+  }
+
   // Exchange code for tokens
+  const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
   const tokenRes = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: "http://localhost:3000/api/linkedin/callback",
+      redirect_uri: `${baseUrl}/api/linkedin/callback`,
       client_id: process.env.LINKEDIN_CLIENT_ID ?? "",
       client_secret: process.env.LINKEDIN_CLIENT_SECRET ?? "",
     }),
@@ -45,33 +57,36 @@ export async function GET(req: NextRequest) {
   const tokens = await tokenRes.json();
   const accessToken = tokens.access_token;
   const refreshToken = tokens.refresh_token ?? "";
-  const expiresIn = tokens.expires_in;
+  const expiresIn = tokens.expires_in ?? 5184000;
 
-  // Update .env file with the real tokens
+  // Get the author URN while we have a fresh token
+  let authorUrn = "";
   try {
-    const envPath = path.join(process.cwd(), ".env");
-    const { readFile } = await import("fs/promises");
-    let envContent = await readFile(envPath, "utf-8");
-    envContent = envContent.replace(/LINKEDIN_ACCESS_TOKEN=.*/, `LINKEDIN_ACCESS_TOKEN=${accessToken}`);
-    envContent = envContent.replace(/LINKEDIN_REFRESH_TOKEN=.*/, `LINKEDIN_REFRESH_TOKEN=${refreshToken}`);
-    await writeFile(envPath, envContent);
-  } catch {
-    // Non-fatal — tokens are shown on screen as fallback
+    authorUrn = await getAuthorUrn(accessToken);
+  } catch (e) {
+    console.warn("Could not fetch author URN:", e);
   }
 
-  // Also set in process.env for immediate use (no restart needed)
-  process.env.LINKEDIN_ACCESS_TOKEN = accessToken;
-  process.env.LINKEDIN_REFRESH_TOKEN = refreshToken;
-
-  return new NextResponse(
-    `<html><body style="background:#0a0a0a;color:white;font-family:system-ui;padding:40px;max-width:600px">
-      <h1 style="color:#4ade80">LinkedIn Connected!</h1>
-      <p>Tokens have been saved to your .env file and are active immediately.</p>
-      <p style="color:#9ca3af">Access token expires in ${Math.round(expiresIn / 86400)} days.</p>
-      ${refreshToken ? `<p style="color:#9ca3af">Refresh token also saved.</p>` : `<p style="color:#fbbf24">No refresh token returned — you may need to re-authorize later.</p>`}
-      <br>
-      <a href="/" style="color:#60a5fa;text-decoration:underline">Back to Scene Sense</a>
-    </body></html>`,
-    { headers: { "Content-Type": "text/html" } }
+  // Encrypt and save to DB
+  const expiresAt = new Date(Date.now() + expiresIn * 1000);
+  await query(
+    `INSERT INTO user_credentials (user_id, linkedin_access_token, linkedin_refresh_token, linkedin_token_expires, linkedin_author_urn, updated_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     ON CONFLICT (user_id) DO UPDATE SET
+       linkedin_access_token = $2,
+       linkedin_refresh_token = $3,
+       linkedin_token_expires = $4,
+       linkedin_author_urn = $5,
+       updated_at = NOW()`,
+    [
+      userId,
+      encrypt(accessToken),
+      refreshToken ? encrypt(refreshToken) : null,
+      expiresAt,
+      authorUrn,
+    ]
   );
+
+  // Redirect to settings page
+  return NextResponse.redirect(`${baseUrl}/settings?linkedin=connected`);
 }

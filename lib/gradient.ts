@@ -1,22 +1,30 @@
 import OpenAI from "openai";
 
 const GRADIENT_BASE_URL = "https://inference.do-ai.run/v1";
-const API_KEY = () => process.env.DIGITAL_OCEAN_MODEL_ACCESS_KEY!;
 
-let _openai: OpenAI | null = null;
-function getClient(): OpenAI {
-  if (!_openai) {
-    _openai = new OpenAI({
-      baseURL: GRADIENT_BASE_URL,
-      apiKey: API_KEY(),
-    });
+/** Resolve API key: per-user key required, no shared fallback */
+function resolveApiKey(apiKey?: string): string {
+  if (!apiKey) throw new Error("No DigitalOcean API key configured — go to Settings to add yours");
+  return apiKey;
+}
+
+/** Get an OpenAI client for the given API key */
+const clientCache = new Map<string, OpenAI>();
+function getClient(apiKey?: string): OpenAI {
+  const key = resolveApiKey(apiKey);
+  let client = clientCache.get(key);
+  if (!client) {
+    client = new OpenAI({ baseURL: GRADIENT_BASE_URL, apiKey: key });
+    // Cap cache size to prevent unbounded growth
+    if (clientCache.size > 20) clientCache.clear();
+    clientCache.set(key, client);
   }
-  return _openai;
+  return client;
 }
 
 // --- Vision: Analyze images and determine optimal order for promo video ---
 
-export async function analyzeImages(base64Images: string[]): Promise<{ description: string; order: number[] }> {
+export async function analyzeImages(base64Images: string[], apiKey?: string): Promise<{ description: string; order: number[] }> {
   const imageContent = base64Images.map((img, i) => {
     const dataUrl = img.startsWith("data:") ? img : `data:image/jpeg;base64,${img}`;
     return [
@@ -25,7 +33,7 @@ export async function analyzeImages(base64Images: string[]): Promise<{ descripti
     ];
   }).flat();
 
-  const response = await getClient().chat.completions.create({
+  const response = await getClient(apiKey).chat.completions.create({
     model: "openai-gpt-4.1",
     messages: [
       {
@@ -81,10 +89,11 @@ export async function generateCopyAndMusicPrompt(params: {
   platform: string;
   goal: string;
   vibe: string;
+  apiKey?: string;
 }): Promise<{ copy: string; musicPrompt: string; videoOverlays: string[] }> {
-  const { description, platform, goal, vibe } = params;
+  const { description, platform, goal, vibe, apiKey } = params;
 
-  const response = await getClient().chat.completions.create({
+  const response = await getClient(apiKey).chat.completions.create({
     model: "openai-gpt-4.1",
     messages: [
       {
@@ -162,9 +171,9 @@ Vibe: ${vibe}`,
 
 const ASYNC_BASE = `${GRADIENT_BASE_URL}/async-invoke`;
 
-async function asyncInvoke(modelId: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function asyncInvoke(modelId: string, input: Record<string, unknown>, apiKey?: string): Promise<Record<string, unknown>> {
   const headers = {
-    Authorization: `Bearer ${API_KEY()}`,
+    Authorization: `Bearer ${resolveApiKey(apiKey)}`,
     "Content-Type": "application/json",
   };
 
@@ -261,8 +270,9 @@ export async function generatePromoFrames(params: {
   description: string;
   vibe: string;
   goal: string;
+  apiKey?: string;
 }): Promise<Buffer[]> {
-  const { description, vibe, goal } = params;
+  const { description, vibe, goal, apiKey } = params;
 
   // Frame 1: stylized version of the actual scene (stays grounded in input)
   // Frame 2: abstract/energetic interpretation (creative freedom)
@@ -277,7 +287,7 @@ export async function generatePromoFrames(params: {
       prompt,
       image_size: "landscape_16_9",
       num_images: 1,
-    });
+    }, apiKey);
 
     const output = result?.output as Record<string, unknown> | undefined;
     const images = output?.images as Array<Record<string, string>> | undefined;

@@ -5,10 +5,59 @@ import { NextRequest } from "next/server";
 import { analyzeImages, generateCopyAndMusicPrompt, generateMusic } from "@/lib/gradient";
 import { composePromoVideo, calculateVideoDuration } from "@/lib/ffmpeg";
 import { query } from "@/lib/db";
+import { getRequiredUser } from "@/lib/session";
+import { decrypt } from "@/lib/crypto";
 
 export const maxDuration = 120;
 
+async function getUserApiKey(userId: number): Promise<string | undefined> {
+  const result = await query(
+    `SELECT do_api_key_encrypted FROM user_credentials WHERE user_id = $1`,
+    [userId]
+  );
+  const encrypted = result.rows[0]?.do_api_key_encrypted;
+  if (encrypted) {
+    try { return decrypt(encrypted); } catch { return undefined; }
+  }
+  return undefined;
+}
+
 export async function POST(req: NextRequest) {
+  // Auth + parse form data BEFORE creating the stream
+  // (request body can't be read inside ReadableStream.start on some runtimes)
+  let user, apiKey, formData;
+  try {
+    user = await getRequiredUser();
+    apiKey = await getUserApiKey(user.userId);
+    formData = await req.formData();
+  } catch (err) {
+    // Return a proper SSE error if auth/setup fails
+    const encoder = new TextEncoder();
+    const errStream = new ReadableStream({
+      start(controller) {
+        const msg = err instanceof Error ? err.message : "Setup failed";
+        controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message: msg })}\n\n`));
+        controller.close();
+      },
+    });
+    return new Response(errStream, {
+      headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+    });
+  }
+
+  if (!apiKey) {
+    const encoder = new TextEncoder();
+    const errStream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message: "No DigitalOcean API key configured — go to Settings to add yours" })}\n\n`));
+        controller.close();
+      },
+    });
+    return new Response(errStream, {
+      headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+    });
+  }
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -19,8 +68,6 @@ export async function POST(req: NextRequest) {
       };
 
       try {
-        // Parse multipart form data
-        const formData = await req.formData();
         const goal = formData.get("goal") as string;
         const platform = formData.get("platform") as string;
         const vibe = formData.get("vibe") as string;
@@ -61,7 +108,7 @@ export async function POST(req: NextRequest) {
         const imageBuffers = await Promise.all(imagePaths.map(p => readFile(p)));
         const base64Images = imageBuffers.map(buf => buf.toString("base64"));
 
-        const { description, order } = await analyzeImages(base64Images);
+        const { description, order } = await analyzeImages(base64Images, apiKey);
 
         // Reorder imagePaths based on AI-selected order
         const orderedPaths = order
@@ -80,6 +127,7 @@ export async function POST(req: NextRequest) {
           platform,
           goal,
           vibe,
+          apiKey,
         });
         send("step", { step: "copy", status: "completed", copy, musicPrompt });
 
@@ -116,10 +164,10 @@ export async function POST(req: NextRequest) {
 
         // --- Step 5: Save to DB ---
         const result = await query(
-          `INSERT INTO posts (platform, goal, vibe, description, copy, narration, video_url, media_url)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          `INSERT INTO posts (platform, goal, vibe, description, copy, narration, video_url, media_url, user_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            RETURNING id, created_at`,
-          [platform, goal, vibe, description, copy, musicPrompt, `/api/media/${jobId}?type=video`, `/api/media/${jobId}?type=input`]
+          [platform, goal, vibe, description, copy, musicPrompt, `/api/media/${jobId}?type=video`, `/api/media/${jobId}?type=input`, user.userId]
         );
 
         const post = result.rows[0];

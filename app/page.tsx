@@ -56,6 +56,15 @@ export default function Home() {
   const [platform, setPlatform] = useState("LinkedIn");
   const [vibe, setVibe] = useState("");
 
+  // Credential check
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+  useEffect(() => {
+    fetch("/api/settings/credentials")
+      .then(r => r.json())
+      .then(d => setHasApiKey(!!d.doApiKey))
+      .catch(() => setHasApiKey(false));
+  }, []);
+
   // Pipeline state
   const [generating, setGenerating] = useState(false);
   const [activeSteps, setActiveSteps] = useState<Set<string>>(new Set());
@@ -221,7 +230,7 @@ export default function Home() {
       : ("pending" as const),
   }));
 
-  const canGenerate = images.length > 0 && goal && !generating;
+  const canGenerate = images.length > 0 && goal && !generating && hasApiKey;
 
   return (
     <div>
@@ -356,7 +365,13 @@ export default function Home() {
           {generating ? "Generating..." : "Generate Post"}
         </button>
 
-        {images.length > 0 && !generating && !result && (
+        {hasApiKey === false && (
+          <p className="text-xs text-center text-amber-400">
+            <a href="/settings" className="underline hover:text-amber-300">Add your DigitalOcean API key</a> in Settings to generate posts
+          </p>
+        )}
+
+        {hasApiKey && images.length > 0 && !generating && !result && (
           <p className="text-xs text-gray-600 text-center">
             {images.length} {images.length === 1 ? "image" : "images"} ready — fill in the details and hit Generate
           </p>
