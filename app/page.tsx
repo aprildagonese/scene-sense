@@ -6,7 +6,6 @@ import ProgressOverlay from "@/components/ProgressOverlay";
 import OutputPanel from "@/components/OutputPanel";
 import DeployScreen from "@/components/DeployScreen";
 import PostsSidebar from "@/components/PostsSidebar";
-import QRCode from "@/components/QRCode";
 
 function CameraToggle({ onCapture }: { onCapture: (blob: Blob) => void }) {
   const [open, setOpen] = useState(false);
@@ -53,7 +52,7 @@ export default function Home() {
 
   // Form state
   const [goal, setGoal] = useState("");
-  const [platform, setPlatform] = useState("LinkedIn");
+  const platform = "LinkedIn";
   const [vibe, setVibe] = useState("");
 
   // Credential check
@@ -236,10 +235,6 @@ export default function Home() {
     <div>
     {showDeploy && <DeployScreen onClose={() => setShowDeploy(false)} />}
 
-    {/* Fixed bottom-left: QR code */}
-    <div className="fixed bottom-4 left-4 z-40">
-      <QRCode size={100} />
-    </div>
     <button
       onClick={() => setShowDeploy(true)}
       className="fixed bottom-6 right-6 z-40 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm font-medium text-gray-300 hover:text-white transition-colors border border-gray-700"
@@ -327,21 +322,6 @@ export default function Home() {
               rows={3}
               className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 resize-y"
             />
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">
-              Platform
-            </label>
-            <select
-              value={platform}
-              onChange={(e) => setPlatform(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-            >
-              <option>LinkedIn</option>
-              <option>Twitter/X</option>
-              <option>Instagram</option>
-            </select>
           </div>
 
           <div>

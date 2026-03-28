@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface GenerateResult {
   id: number;
@@ -18,6 +18,14 @@ interface OutputPanelProps {
 
 export default function OutputPanel({ result }: OutputPanelProps) {
   const [copy, setCopy] = useState(result.copy);
+  const [linkedinConnected, setLinkedinConnected] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings/credentials")
+      .then(r => r.json())
+      .then(d => setLinkedinConnected(!!d.linkedinConnected))
+      .catch(() => {});
+  }, []);
   const [copied, setCopied] = useState(false);
   const [posting, setPosting] = useState(false);
   const [posted, setPosted] = useState(result.posted ?? false);
@@ -57,7 +65,7 @@ export default function OutputPanel({ result }: OutputPanelProps) {
   return (
     <div className="space-y-4">
       {/* Video player */}
-      <div className="rounded-xl overflow-hidden border border-gray-700 bg-black">
+      <div className="relative rounded-xl overflow-hidden border border-gray-700 bg-black group">
         <video
           key={result.videoUrl}
           className="w-full"
@@ -67,6 +75,16 @@ export default function OutputPanel({ result }: OutputPanelProps) {
         >
           <source src={result.videoUrl} type="video/mp4" />
         </video>
+        <a
+          href={result.videoUrl}
+          download="scene-sense-video.mp4"
+          className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-gray-300 hover:text-white hover:bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity"
+          title="Download video"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+        </a>
       </div>
 
       {/* Scene description (collapsible) */}
@@ -97,7 +115,24 @@ export default function OutputPanel({ result }: OutputPanelProps) {
 
       {/* Editable copy */}
       <div>
-        <label className="block text-xs text-gray-500 mb-1">Post copy</label>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs text-gray-500">Post copy</label>
+          <button
+            onClick={handleCopy}
+            className="p-1 rounded text-gray-500 hover:text-white transition-colors"
+            title={copied ? "Copied!" : "Copy to clipboard"}
+          >
+            {copied ? (
+              <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            )}
+          </button>
+        </div>
         <textarea
           value={copy}
           onChange={(e) => setCopy(e.target.value)}
@@ -150,22 +185,19 @@ export default function OutputPanel({ result }: OutputPanelProps) {
       {/* Action buttons */}
       <div className="space-y-2">
         {!posted && !confirmPost ? (
-          <div className="flex gap-2">
+          <div>
             <button
               onClick={() => setConfirmPost({ testMode: false })}
-              disabled={posting}
-              className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 font-semibold transition-colors disabled:opacity-50"
+              disabled={posting || !linkedinConnected}
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Post to LinkedIn
             </button>
-            <button
-              onClick={() => setConfirmPost({ testMode: true })}
-              disabled={posting}
-              className="py-3 px-4 rounded-xl bg-gray-700 hover:bg-gray-600 text-sm font-medium transition-colors disabled:opacity-50"
-              title="Post visible only to your connections (for testing)"
-            >
-              Test
-            </button>
+            {!linkedinConnected && (
+              <p className="text-xs text-amber-400 text-center mt-1">
+                <a href="/settings" className="underline hover:text-amber-300">Connect LinkedIn</a> in Settings to post
+              </p>
+            )}
           </div>
         ) : posted ? (
           <div className="w-full py-3 rounded-xl bg-green-600/20 border border-green-600/40 text-center font-semibold text-green-400">
@@ -177,21 +209,6 @@ export default function OutputPanel({ result }: OutputPanelProps) {
           <p className="text-xs text-red-400">{postError}</p>
         )}
 
-        <div className="flex gap-2">
-          <button
-            onClick={handleCopy}
-            className="flex-1 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm font-medium transition-colors"
-          >
-            {copied ? "Copied!" : "Copy Text"}
-          </button>
-          <a
-            href={result.videoUrl}
-            download="scene-sense-video.mp4"
-            className="flex-1 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm font-medium transition-colors text-center"
-          >
-            Download Video
-          </a>
-        </div>
       </div>
 
     </div>
