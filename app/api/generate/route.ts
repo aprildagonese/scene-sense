@@ -105,8 +105,21 @@ export async function POST(req: NextRequest) {
         send("step", { step: "vision", status: "started" });
 
         const { readFile } = await import("fs/promises");
+        const sharp = (await import("sharp")).default;
         const imageBuffers = await Promise.all(imagePaths.map(p => readFile(p)));
-        const base64Images = imageBuffers.map(buf => buf.toString("base64"));
+        // Downscale for the vision request only — full-res originals are kept
+        // on disk for video composition. Sending full-res photos overruns the
+        // inference endpoint's body limits (413 at the edge, 400 at the API).
+        const base64Images = await Promise.all(
+          imageBuffers.map(async (buf) => {
+            const resized = await sharp(buf)
+              .rotate()
+              .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
+              .jpeg({ quality: 80 })
+              .toBuffer();
+            return resized.toString("base64");
+          })
+        );
 
         const { description, order } = await analyzeImages(base64Images, apiKey);
 
