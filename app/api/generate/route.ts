@@ -4,6 +4,7 @@ import path from "path";
 import { NextRequest } from "next/server";
 import { analyzeImages, generateCopyAndMusicPrompt, generateMusic } from "@/lib/gradient";
 import { composePromoVideo, calculateVideoDuration } from "@/lib/ffmpeg";
+import { uploadObject } from "@/lib/storage";
 import { query } from "@/lib/db";
 import { getRequiredUser } from "@/lib/session";
 import { decrypt } from "@/lib/crypto";
@@ -152,7 +153,7 @@ export async function POST(req: NextRequest) {
         const audioPath = path.join(workDir, "music.wav");
 
         try {
-          musicBuffer = await generateMusic(musicPrompt, videoDuration, 2);
+          musicBuffer = await generateMusic(musicPrompt, videoDuration, apiKey, 2);
           await writeFile(audioPath, musicBuffer);
           send("step", { step: "audio", status: "completed" });
         } catch (err) {
@@ -175,7 +176,18 @@ export async function POST(req: NextRequest) {
 
         send("step", { step: "video", status: "completed" });
 
-        // --- Step 5: Save to DB ---
+        // --- Step 5: Publish — upload media to Spaces + persist to DB ---
+        send("step", { step: "publish", status: "started" });
+
+        // Upload media to Spaces (durable storage; /tmp is ephemeral)
+        const videoBuffer = await readFile(outputPath);
+        const heroBuffer = await readFile(finalImagePaths[0]);
+        await Promise.all([
+          uploadObject(`${jobId}/output.mp4`, videoBuffer, "video/mp4"),
+          uploadObject(`${jobId}/input.jpg`, heroBuffer, "image/jpeg"),
+          ...(musicBuffer ? [uploadObject(`${jobId}/music.wav`, musicBuffer, "audio/wav")] : []),
+        ]);
+
         const result = await query(
           `INSERT INTO posts (platform, goal, vibe, description, copy, narration, video_url, media_url, user_id)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -189,6 +201,8 @@ export async function POST(req: NextRequest) {
           path.join(workDir, "meta.json"),
           JSON.stringify({ postId: post.id, jobId })
         );
+
+        send("step", { step: "publish", status: "completed" });
 
         send("complete", {
           id: post.id,

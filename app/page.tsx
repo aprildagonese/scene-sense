@@ -41,9 +41,10 @@ const STEP_LABELS: Record<string, string> = {
   copy: "Crafting your post...",
   audio: "Generating music...",
   video: "Compositing video...",
+  publish: "Publishing your video...",
 };
 
-const STEP_ORDER = ["vision", "copy", "audio", "video"];
+const STEP_ORDER = ["vision", "copy", "audio", "video", "publish"];
 
 export default function Home() {
   // Media state — supports multiple images
@@ -177,36 +178,40 @@ export default function Home() {
 
         buffer += decoder.decode(value, { stream: true });
 
-        // Parse SSE events from buffer
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
+        // SSE events are separated by a blank line. Split on the boundary and
+        // keep any trailing partial event in the buffer for the next read, so
+        // an event's `event:`/`data:` lines are never parsed across chunks.
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop() ?? "";
 
-        let eventType = "";
-        for (const line of lines) {
-          if (line.startsWith("event: ")) {
-            eventType = line.slice(7).trim();
-          } else if (line.startsWith("data: ")) {
-            const data = JSON.parse(line.slice(6));
+        for (const block of blocks) {
+          let eventType = "";
+          let dataStr = "";
+          for (const line of block.split("\n")) {
+            if (line.startsWith("event: ")) eventType = line.slice(7).trim();
+            else if (line.startsWith("data: ")) dataStr += line.slice(6);
+          }
+          if (!dataStr) continue;
+          const data = JSON.parse(dataStr);
 
-            if (eventType === "step") {
-              if (data.status === "started") {
-                setActiveSteps((prev) => new Set([...prev, data.step]));
-              } else if (data.status === "completed") {
-                setActiveSteps((prev) => {
-                  const next = new Set(prev);
-                  next.delete(data.step);
-                  return next;
-                });
-                setCompletedSteps((prev) => new Set([...prev, data.step]));
-              }
-            } else if (eventType === "complete") {
-              setResult(data);
-              setSelectedPostId(data.id);
-              // Refresh sidebar to show the new post
-              setSidebarRefreshKey((k) => k + 1);
-            } else if (eventType === "error") {
-              setError(data.message);
+          if (eventType === "step") {
+            if (data.status === "started") {
+              setActiveSteps((prev) => new Set([...prev, data.step]));
+            } else if (data.status === "completed") {
+              setActiveSteps((prev) => {
+                const next = new Set(prev);
+                next.delete(data.step);
+                return next;
+              });
+              setCompletedSteps((prev) => new Set([...prev, data.step]));
             }
+          } else if (eventType === "complete") {
+            setResult(data);
+            setSelectedPostId(data.id);
+            // Refresh sidebar to show the new post
+            setSidebarRefreshKey((k) => k + 1);
+          } else if (eventType === "error") {
+            setError(data.message);
           }
         }
       }

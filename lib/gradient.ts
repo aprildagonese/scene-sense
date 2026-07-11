@@ -232,27 +232,25 @@ async function asyncInvoke(modelId: string, input: Record<string, unknown>, apiK
   return resultRes.json();
 }
 
-// --- Audio: Generate music via MusicGen on GPU Droplet ---
+// --- Audio: Generate music via Stable Audio on Gradient (async invoke) ---
 
-const GPU_SERVER_URL = `http://${process.env.DIGITAL_OCEAN_GPU_DROPLET_IP ?? "159.203.31.93"}:8000`;
-
-export async function generateMusic(musicPrompt: string, durationSeconds: number = 12, retries = 1): Promise<Buffer> {
+export async function generateMusic(musicPrompt: string, durationSeconds: number = 12, apiKey?: string, retries = 1): Promise<Buffer> {
   let lastError: Error | null = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(`${GPU_SERVER_URL}/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: musicPrompt,
-          duration_seconds: durationSeconds,
-        }),
-      });
+      const result = await asyncInvoke(
+        "fal-ai/stable-audio-25/text-to-audio",
+        { prompt: musicPrompt, seconds_total: Math.round(durationSeconds) },
+        apiKey
+      );
 
-      if (!res.ok) {
-        throw new Error(`MusicGen server error: ${res.status} ${await res.text()}`);
-      }
+      const output = result?.output as Record<string, unknown> | undefined;
+      const audio = output?.audio as Record<string, string> | undefined;
+      const audioUrl = audio?.url;
+      if (!audioUrl) throw new Error("No audio URL in stable-audio result");
 
+      const res = await fetch(audioUrl);
+      if (!res.ok) throw new Error(`Audio download failed: ${res.status}`);
       return Buffer.from(await res.arrayBuffer());
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
