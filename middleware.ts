@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 export async function middleware(req: NextRequest) {
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  const secureCookie = process.env.NEXTAUTH_URL?.startsWith("https://") ?? false;
+  const token = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+    secureCookie,
+  });
 
   if (!token) {
     // API routes get a 401, pages get redirected to login
